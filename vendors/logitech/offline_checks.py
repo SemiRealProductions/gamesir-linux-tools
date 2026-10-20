@@ -223,6 +223,76 @@ def main():
     finally:
         config.referenced_macro_sectors = real
 
+    print('\n== #28: a mouse still on its factory (ROM) profiles ==')
+    class FactoryMouse(FakeMouse):
+        """Like a mouse that never met G HUB: RAM directory blank, profile slots
+        erased, two factory profiles in ROM (0x0101/0x0102) that carry no CRC."""
+        def __init__(self):
+            super().__init__()
+            self.s[0] = bytearray(b'\xff' * SIZE)
+            for sec in range(1, 6):
+                self.s[sec] = bytearray(b'\xff' * SIZE)
+            rom2 = bytearray(self.s[ROM_GOOD]); rom2[0] = 2      # 500 Hz, like the real one
+            self.s[ROM_JUNK] = rom2
+            self.current = ROM_GOOD
+        def _mem_read16(self, idx, sector, offset):
+            return bytes(self.s[sector][offset:offset + 16])
+        def get_feature_index(self, fid):
+            return 10
+        def oob_headers(self):
+            return [(ROM_GOOD, 1), (ROM_JUNK, 1)]
+        def profile_headers(self):
+            d = self.s[0]
+            if d[:4] in (b'\x00' * 4, b'\xff' * 4):
+                return self.oob_headers()
+            out, o = [], 0
+            while d[o:o + 2] != b'\xff\xff':
+                out.append(((d[o] << 8) | d[o + 1], d[o + 2])); o += 4
+            return out
+        def current_profile(self):
+            return self.current
+        def set_current_profile(self, sec):
+            self.current = sec
+            return sec
+    dev = FactoryMouse()
+    check('a factory-only mouse is recognised', config.factory_only(dev))
+    ok, msg = config.setup_editable_profiles(dev, INFO)
+    check('setup succeeds', ok, msg)
+    check('the profile list now names slots 1 and 2', dev.profile_headers() == [(1, 1), (2, 1)],
+          str(dev.profile_headers()))
+    d = bytes(dev.s[0])
+    check('the profile list has a valid CRC',
+          onboard.crc16_ccitt(d[:-2]) == int.from_bytes(d[-2:], 'big'))
+    check('the list is laid out like G HUB writes it',
+          d[:12] == bytes.fromhex('000101000002010 0ffff0000'.replace(' ', '')))
+    p1 = onboard.OnboardProfile.decode(bytes(dev.s[1])); p2 = onboard.OnboardProfile.decode(bytes(dev.s[2]))
+    check('both copies verify', p1.crc_ok and p2.crc_ok)
+    check('the copies keep the factory settings',
+          dev.s[1][:-2] == dev.s[ROM_GOOD][:-2] and dev.s[2][0] == 2)
+    check('the mouse switched to the copy of its active profile', dev.current == 1)
+    check('slots 3-5 untouched', all(set(dev.s[x]) == {0xFF} for x in (3, 4, 5)))
+    ok, msg = config.setup_editable_profiles(dev, INFO)
+    check('running it again changes nothing', ok and 'already' in msg, msg)
+    ok, msg = config.apply_edits(dev, INFO, dev.profile_headers(), 1, sensor={'dpi': {0: 1600}})
+    check('...and the profile can now be edited', ok, msg)
+
+    dev = FactoryMouse()
+    dev.s[2] = bytearray(make_profile('mine'))             # something already in slot 2
+    before = {k: bytes(v) for k, v in dev.s.items()}
+    ok, msg = config.setup_editable_profiles(dev, INFO)
+    check('a slot holding unknown data is never overwritten', not ok and 'left alone' in msg, msg)
+    check('...and nothing at all was written', {k: bytes(v) for k, v in dev.s.items()} == before)
+
+    class FailsOnList(FactoryMouse):
+        def write_sector(self, sec, data):
+            if sec == 0:
+                raise OSError('dropped')
+            super().write_sector(sec, data)
+    dev = FailsOnList()
+    ok, msg = config.setup_editable_profiles(dev, INFO)
+    check('if the profile list fails, the mouse keeps its factory profiles',
+          not ok and config.factory_only(dev) and dev.current == ROM_GOOD, msg)
+
     print()
     if failures:
         print(f'FAILED ({len(failures)}): ' + '; '.join(failures))

@@ -2,16 +2,46 @@ import QtQuick
 import QtQuick.Layouts
 import App 1.0
 
-// Shared "mouse not connected / needs access" panel for the mouse tabs (Buttons,
-// DPI). Shown when !mouse.present; the page's real content is hidden behind it.
-// One copy so every mouse tab explains connect/permission identically.
+// Shared "mouse not connected / needs access / needs setup" panel for the mouse
+// tabs. Shown when !mouse.present, or when the mouse is still on its read-only
+// factory profiles; the page's real content is hidden behind it. One copy so
+// every mouse tab explains it identically.
 ColumnLayout {
     anchors.centerIn: parent
     width: Math.min(parent.width - 60, 460)
-    visible: !mouse.present
+    visible: !mouse.present || mouse.needsProfileSetup
     spacing: 14
 
+    // ---- connected, but only factory profiles (#28) ----
     Text {
+        visible: mouse.present && mouse.needsProfileSetup
+        Layout.fillWidth: true
+        horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+        font.family: Theme.fontFamily; font.pixelSize: Theme.fontL; color: Theme.text
+        text: "Your G502 X is still using its factory profiles."
+    }
+    Card {
+        visible: mouse.present && mouse.needsProfileSetup
+        title: "Set up editable profiles (one-time)"
+        Layout.fillWidth: true
+        Text {
+            width: parent.width; wrapMode: Text.WordWrap
+            color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+            text: "The factory profiles live in read-only memory, so they can't be "
+                + "edited directly. Deadband can copy them into editable slots, the "
+                + "same thing Logitech's own software does the first time it sees "
+                + "the mouse. Your current settings carry over unchanged, and a "
+                + "backup is saved first."
+        }
+        PillButton {
+            label: mouse.busy ? "Setting up…" : "Set up editable profiles"
+            enabled: !mouse.busy
+            onClicked: mouse.setupProfiles()
+        }
+    }
+
+    Text {
+        visible: !mouse.present
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
         font.family: Theme.fontFamily; font.pixelSize: Theme.fontL; color: Theme.text
@@ -37,5 +67,6 @@ ColumnLayout {
             text: "…then replug the mouse. If ratbagd holds the device, stop it first."
         }
     }
-    PillButton { Layout.alignment: Qt.AlignHCenter; label: "Retry"; onClicked: mouse.refresh() }
+    PillButton { visible: !mouse.present
+                 Layout.alignment: Qt.AlignHCenter; label: "Retry"; onClicked: mouse.refresh() }
 }

@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import onboard      # noqa: E402
+import hidpp        # noqa: E402  (RAM_DIRECTORY / FEATURE_ONBOARD_PROFILES)
 import remap        # noqa: E402  (backup_all / diff_offsets / parse_binding)
 import macros       # noqa: E402  (richer key mapping for key: specs)
 
@@ -212,7 +213,15 @@ def max_macro_bytes(sector_size, sectors=MAX_MACRO_SECTORS):
 
 def _revert(dev, sector, raw, size):
     """Put a sector back after a failed write and READ IT BACK: the message to
-    the user may only say "reverted" when the revert is confirmed."""
+    the user may only say "reverted" when the revert is confirmed. A sector that
+    already reads back as the original (the failed write never landed) needs no
+    write at all -- and a dead connection can't then turn "nothing changed" into
+    "couldn't confirm"."""
+    try:
+        if dev.read_sector(sector, size) == raw:
+            return True
+    except Exception:
+        pass
     try:
         dev.write_sector(sector, raw)
         return dev.read_sector(sector, size) == raw
@@ -533,6 +542,103 @@ def _plausible_profile(prof):
     if len(prof.buttons) != onboard.N_BUTTONS:
         return False, 'wrong number of buttons'
     return True, ''
+
+
+def factory_only(dev):
+    """True when the mouse has never had editable profiles: its RAM directory
+    (sector 0x0000) is blank, so it runs the read-only factory copies in ROM.
+    G HUB sets editable copies up on first use; a mouse that never met G HUB
+    (or was wiped) has none, and every edit then hits a ROM sector (#28)."""
+    idx = dev.get_feature_index(hidpp.FEATURE_ONBOARD_PROFILES)
+    first = dev._mem_read16(idx, hidpp.RAM_DIRECTORY, 0)
+    return first[0:4] in (b'\x00\x00\x00\x00', b'\xff\xff\xff\xff')
+
+
+def _directory_bytes(entries, size):
+    """A RAM directory sector exactly as G HUB writes one (read off a G502 X):
+    4-byte [sector BE, enabled, 00] entries, then `ff ff 00 00`, 0xFF fill, and
+    the CRC-16/CCITT trailer like every other sector."""
+    body = bytearray()
+    for sector, enabled in entries:
+        body += bytes([sector >> 8, sector & 0xFF, 1 if enabled else 0, 0])
+    body += b'\xff\xff\x00\x00'
+    body += b'\xff' * (size - 2 - len(body))
+    return bytes(body) + onboard.crc16_ccitt(bytes(body)).to_bytes(2, 'big')
+
+
+def setup_editable_profiles(dev, info):
+    """First-time setup for a mouse still on its factory profiles: copy each ROM
+    profile into the matching RAM slot (1, 2, ...) with a valid CRC, then write
+    the RAM directory that lists them, then switch to the copy of whichever
+    profile was active. What G HUB does the first time it sees the mouse.
+
+    Order matters: profiles first, directory LAST. Until the directory is
+    written the mouse keeps running its factory profiles exactly as before, so
+    any failure before that point changes nothing it uses. Every input is
+    validated before the first write, a slot holding anything but erased flash
+    is never overwritten, a backup is taken first, and every write is read back.
+    Returns (ok, message)."""
+    size = info['sector_size']
+    if not factory_only(dev):
+        return True, 'editable profiles are already set up'
+    oob = dev.oob_headers()
+    if not oob:
+        return False, 'the mouse lists no factory profiles to copy - nothing was changed'
+    n = min(len(oob), info['profile_count'])
+    plan = []                                   # (rom sector, ram sector, enabled, payload)
+    for i, (rom, enabled) in enumerate(oob[:n]):
+        ram = i + 1
+        try:
+            src = dev.read_sector(rom, size)
+        except Exception as e:
+            return False, f'could not read factory profile {i + 1} ({e}) - nothing was changed'
+        if len(src) != size or set(src) in ({0x00}, {0xFF}):
+            return False, f'factory profile {i + 1} is empty - nothing was changed'
+        prof = onboard.OnboardProfile.decode(src, sector=ram)
+        ok, why = _plausible_profile(prof)
+        if not ok:
+            return False, f'factory profile {i + 1} does not look valid ({why}) - nothing was changed'
+        payload = prof.to_bytes()
+        if not onboard.OnboardProfile.decode(payload).crc_ok:
+            return False, 'could not build a valid profile from the factory copy - nothing was changed'
+        current = dev.read_sector(ram, size)
+        if current != payload and set(current) not in ({0xFF}, {0x00}):
+            return False, (f'profile slot {ram} already holds data Deadband does not '
+                           'recognise, so it was left alone - nothing was changed')
+        plan.append((rom, ram, enabled, payload))
+    directory = _directory_bytes([(ram, en) for _rom, ram, en, _p in plan], size)
+    old_directory = dev.read_sector(hidpp.RAM_DIRECTORY, size)
+    active_rom = dev.current_profile()
+    try:
+        backup = remap.backup_all(dev, info, [(hidpp.RAM_DIRECTORY, 1)]
+                                  + [(ram, 1) for _r, ram, _e, _p in plan] + list(oob[:n]))
+    except OSError as e:
+        return False, f'could not save the safety backup ({e}) - nothing was changed'
+    for _rom, ram, _en, payload in plan:
+        try:
+            dev.write_sector(ram, payload)
+            ok = dev.read_sector(ram, size) == payload
+        except Exception as e:
+            return False, (f'writing profile slot {ram} failed ({e}); the mouse still uses its '
+                           'factory profiles, nothing it uses was changed')
+        if not ok:
+            return False, (f'profile slot {ram} did not read back correctly; the mouse still '
+                           'uses its factory profiles, nothing it uses was changed')
+    try:
+        dev.write_sector(hidpp.RAM_DIRECTORY, directory)
+        if dev.read_sector(hidpp.RAM_DIRECTORY, size) != directory:
+            return _failed('the profile list did not read back correctly', dev,
+                           hidpp.RAM_DIRECTORY, old_directory, size, backup)
+    except Exception as e:
+        return _failed(f'writing the profile list failed ({e})', dev,
+                       hidpp.RAM_DIRECTORY, old_directory, size, backup)
+    target = next((ram for rom, ram, _e, _p in plan if rom == active_rom), plan[0][1])
+    try:
+        now = dev.set_current_profile(target)
+    except Exception:
+        now = None
+    note = '' if now == target else ' (switch profile once to start using them)'
+    return True, f'set up {len(plan)} editable profiles from the factory copies{note}'
 
 
 def reset_profile_to_oob(dev, info, headers, sector, oob_sector, backup_headers=None):

@@ -122,6 +122,7 @@ class MouseBridge(QObject):
         self._refreshing = False        # a refresh worker is running
         self._applying = ({}, {}, {})   # what the running/last Apply wrote
         self._resetting = False         # a factory reset is running
+        self._needs_setup = False       # still on its read-only factory profiles (#28)
 
         self._refreshDone.connect(self._on_refresh)
         self._remapDone.connect(self._on_remap)
@@ -335,7 +336,7 @@ class MouseBridge(QObject):
     def resetProfile(self):
         """Restore the SELECTED profile to the mouse's factory copy (off-thread).
         Everything in that profile goes back: buttons, G-Shift, DPI, rate, name."""
-        if self._busy:
+        if self._busy or self._refuse_if_factory():
             return
         target = self._selected
         factory = 0
@@ -373,11 +374,51 @@ class MouseBridge(QObject):
             except Exception as e:
                 self._profileDone.emit(False, f'reset failed: {e}', 0)
 
+    @Property(bool, notify=presenceChanged)
+    def needsProfileSetup(self):
+        """The mouse still runs its read-only factory profiles: nothing can be
+        edited until editable copies exist (what G HUB sets up on first use)."""
+        return self._needs_setup
+
+    def _refuse_if_factory(self):
+        if self._needs_setup:
+            self._set_apply('⚠ set up editable profiles first (see the mouse page)')
+        return self._needs_setup
+
+    @Slot()
+    def setupProfiles(self):
+        """One-time: copy the factory profiles into editable slots and list
+        them (config.setup_editable_profiles). Off-thread; result in the toast."""
+        if self._busy or not self._needs_setup:
+            return
+        self._busy = True
+        self.busyChanged.emit()
+        self._set_apply('Setting up editable profiles…')
+        threading.Thread(target=self._setup_worker, daemon=True).start()
+
+    def _setup_worker(self):
+        with self._io:
+            dev = hidpp.find_device()
+            if dev is None:
+                self._profileDone.emit(False, 'mouse not accessible — connected and permitted?', 0)
+                return
+            try:
+                with dev:
+                    info = dev.onboard_info()
+                    ok, msg = logi_config.setup_editable_profiles(dev, info)
+                    now = dev.current_profile()
+                if ok:
+                    self._needs_setup = False
+                    self._selected = 0              # follow the new active copy
+                self._profileDone.emit(ok, msg, now)
+            except Exception as e:
+                self._profileDone.emit(False, f'setup failed: {e}', 0)
+
     @Slot(int, str)
     def renameProfile(self, sector, name):
         """Rename a profile (a flash write, so it's gated + backed up like any
         other). Off-thread; the result lands in the Apply toast."""
-        if self._busy:
+        if self._busy or self._refuse_if_factory():
             return
         self._busy = True
         self.busyChanged.emit()
@@ -611,6 +652,7 @@ class MouseBridge(QObject):
             try:
                 with dev:
                     info = dev.onboard_info()
+                    self._needs_setup = logi_config.factory_only(dev)
                     active = dev.current_profile()
                     profiles = self._read_profiles(dev)
                     # show whichever profile the user picked, defaulting to the
@@ -889,6 +931,8 @@ class MouseBridge(QObject):
         active profile in ONE gated, read-back-verified write (off-thread). Macro
         bytecode is written to a free sector first, then the profile once."""
         if self._busy or not (self._pending or self._pending_sensor or self._pending_macros):
+            return
+        if self._refuse_if_factory():
             return
         self._busy = True
         self.busyChanged.emit()

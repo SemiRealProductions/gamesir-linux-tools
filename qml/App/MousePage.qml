@@ -32,7 +32,7 @@ Item {
     // Default / G-Shift layer toggle (like the reference's DEFAULT/G-SHIFT switch)
     Row {
         id: layerToggle
-        visible: mouse.present
+        visible: mouse.present && !mouse.needsProfileSetup
         anchors.top: parent.top; anchors.topMargin: 14
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 8
@@ -48,7 +48,7 @@ Item {
         anchors.bottom: pbar.visible ? pbar.top : parent.bottom
         anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.bottomMargin: 20
         spacing: 16
-        visible: mouse.present
+        visible: mouse.present && !mouse.needsProfileSetup
 
         // -------- LEFT: button list --------
         Card {

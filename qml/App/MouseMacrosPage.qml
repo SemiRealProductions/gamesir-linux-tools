@@ -196,7 +196,7 @@ Item {
     // ---------------------------------------------- connected: the editor
     FitScroll {
         id: scroller
-        visible: mouse.present
+        visible: mouse.present && !mouse.needsProfileSetup
         anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
         anchors.bottom: pbar.visible ? pbar.top : parent.bottom
         anchors.margins: 20; anchors.bottomMargin: 16
