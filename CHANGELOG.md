@@ -10,8 +10,10 @@ curated, user-facing summary; the complete history is in git. Format loosely fol
 ### Added
 - `deadband --doctor --probe`: opt-in, read-only device questions for bug
   reports — a G502 X's firmware, onboard-profile layout and per-profile
-  checksums (and where a mismatched one really sits), and whether an
-  unsupported GameSir controller answers the family protocol.
+  checksums (and where a mismatched one really sits), whether an unsupported
+  GameSir controller answers the family protocol, and the full button records
+  of a connected Cyclone 2 / G7 Pro 8K / Tarantula (to learn how GameSir's app
+  stores key combinations).
 
 ### Fixed
 - Closing Deadband printed hundreds of "Cannot read property … of null" lines;

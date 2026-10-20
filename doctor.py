@@ -966,11 +966,75 @@ def _probe_gamesir():
     return out
 
 
+def _ask(dev, cmd, want, wait=0.6):
+    """Send one family command; return the first reply starting with `want`."""
+    from gs_common import pad
+    dev.write(pad(*cmd))
+    end = time.time() + wait
+    while time.time() < end:
+        r = dev.read(64)
+        if r and bytes(r[:len(want)]) == bytes(want):
+            return bytes(r)
+        time.sleep(0.005)
+    return None
+
+
+def _probe_buttons():
+    """Supported Cyclone-family pads: the first 7 bytes of every button record in
+    the ACTIVE profile. Deadband reads only [enable, target]; what a key
+    combination set in GameSir's app stores after those is what this shows
+    (issue #30). Read-only."""
+    import controller_profile as profiles
+    try:
+        import hidcompat as hid
+    except Exception as e:
+        return ['### Probe: button records', f'- HID library unavailable: {e}']
+    out = ['### Probe: button records (active profile, first 7 bytes each)']
+    seen = set()
+    for d in hid.enumerate():
+        if d.get('vendor_id') != 0x3537 or d.get('path') in seen:
+            continue
+        seen.add(d.get('path'))
+        prof = profiles.detect_one(d.get('product_id'), d.get('product_string') or '')
+        if prof is None or prof.write_style != 'cyclone':
+            continue
+        path = d.get('path')
+        node = os.path.basename(path.decode() if isinstance(path, bytes) else path)
+        if '0x0f' not in _vendor_channel(os.path.join('/sys/class/hidraw', node)):
+            continue
+        dev = hid.device()
+        try:
+            dev.open_path(path)
+            dev.set_nonblocking(True)
+            r = _ask(dev, (0x0F, 0x0B), (0x10, 0x0C))
+            if r is None:
+                out.append(f'- {prof.short} on /dev/{node}: no profile answer (asleep, or not in Xbox mode?)')
+                continue
+            bank = r[2]
+            out.append(f'- {prof.short} on /dev/{node}, profile {bank}:')
+            for name, addr in prof.REMAP_SLOTS:
+                rep = _ask(dev, (0x0F, 0x04, bank, addr >> 8, addr & 0xFF, 7),
+                           (0x10, 0x05, bank, addr >> 8, addr & 0xFF))
+                rec = rep[6:6 + rep[5]].hex(' ') if rep else 'no reply'
+                out.append(f'    {name:<10} 0x{addr:04x}: {rec}')
+                time.sleep(0.03)            # these pads drop back-to-back commands
+        except Exception as e:
+            out.append(f'- {prof.short} on /dev/{node}: could not ask it ({e!r})')
+        finally:
+            try:
+                dev.close()
+            except Exception:
+                pass
+    if len(out) == 1:
+        out.append('- no Cyclone 2 / G7 Pro 8K / Tarantula Pro 8K connected')
+    return out
+
+
 def probe():
     """The --probe sections, as report lines. Close Deadband first: it holds
     the same devices."""
     lines = ['', '## Probe (read-only device questions; close Deadband first)']
-    for part in (_probe_gamesir, _probe_mouse):
+    for part in (_probe_gamesir, _probe_buttons, _probe_mouse):
         try:
             lines += [''] + part()
         except Exception as e:
