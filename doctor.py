@@ -1030,11 +1030,69 @@ def _probe_buttons():
     return out
 
 
+def _probe_g7_unconfirmed():
+    """G7 Pro editions Deadband recognises but doesn't configure yet (the Wuchang
+    dock 10a8, the Zenless 105e): does the config channel answer at all? Claims
+    interface 0 for a moment (so the pad leaves games for ~2 s), sends only
+    heartbeats, the firmware and active-profile queries and one 16-byte read,
+    prints the raw replies, and hands the interface back to xpad (issue #17)."""
+    from vendors.gamesir.models.g7pro import protocol as g7
+    from vendors.gamesir.usb_transport import InterruptHandle
+    from gs_common import pad
+    out = ['### Probe: G7 Pro editions not configured yet']
+    for sysfs in sorted(glob.glob('/sys/bus/usb/devices/*')):
+        try:
+            vid = int(open(os.path.join(sysfs, 'idVendor')).read(), 16)
+            pid = int(open(os.path.join(sysfs, 'idProduct')).read(), 16)
+            bus = int(open(os.path.join(sysfs, 'busnum')).read())
+            addr = int(open(os.path.join(sysfs, 'devnum')).read())
+        except (OSError, ValueError):
+            continue
+        if vid != g7.VID or pid not in g7.UNCONFIRMED_PIDS:
+            continue
+        out.append(f'- 3537:{pid:04x} ({g7.edition_name(pid)}) at {bus}-{addr}')
+        try:
+            h = InterruptHandle.open(g7.VID, (pid,), bus, addr, sysfs,
+                                     g7.IFACE, g7.EP_OUT, g7.EP_IN)
+        except Exception as e:
+            out.append(f'    could not open it: {e}  (the udev rule needs a replug to apply)')
+            continue
+        seq = [0]
+        def send(command, *payload):
+            seq[0] = seq[0] % 255 + 1
+            h.write(bytes(pad(0x0F, 0x00, seq[0], command, *payload)))
+        def collect(wait=0.7):
+            got, end = [], time.time() + wait
+            while time.time() < end:
+                r = h.read(64, timeout_ms=60)
+                if r and len(r) > 4 and r[3] == g7.RESPONSE_MARKER and r[4] != g7.INPUT_MARKER:
+                    got.append(bytes(r[:20]).hex(' '))
+            return sorted(set(got))[:3]
+        try:
+            for _ in range(3):
+                send(0x02, 0xF2, 0x00)               # heartbeat
+                time.sleep(0.05)
+            collect(0.3)
+            for label, cmd in (('firmware (01 09)', (0x01, 0x09)),
+                               ('active profile (01 0b)', (0x01, 0x0B)),
+                               ('read bank 1 @0x0000 x16 (05 04)', (0x05, 0x04, 0x01, 0x00, 0x00, 0x10))):
+                send(*cmd)
+                out.append(f'    {label}: ' + ('; '.join(collect()) or 'no reply'))
+                send(0x02, 0xF2, 0x00)
+        except Exception as e:
+            out.append(f'    could not ask it: {e!r}')
+        finally:
+            h.close()                                # back to xpad
+    if len(out) == 1:
+        out.append('- none connected')
+    return out
+
+
 def probe():
     """The --probe sections, as report lines. Close Deadband first: it holds
     the same devices."""
     lines = ['', '## Probe (read-only device questions; close Deadband first)']
-    for part in (_probe_gamesir, _probe_buttons, _probe_mouse):
+    for part in (_probe_gamesir, _probe_buttons, _probe_g7_unconfirmed, _probe_mouse):
         try:
             lines += [''] + part()
         except Exception as e:
