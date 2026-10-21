@@ -1,4 +1,5 @@
 import QtQuick
+import App 1.0
 
 // Compact HSV picker: a saturation/value square + a hue strip. Holds hue/sat/val
 // as the source of truth; `color` is derived. Call setColor(c) to seed it from
@@ -15,7 +16,7 @@ Item {
     readonly property color color: Qt.hsva(hue, sat, val, 1)
     signal edited(color c)
 
-    implicitHeight: sv.height + hueBar.height + 10
+    implicitHeight: sv.height + hueBar.height + 44
 
     property color _probe: "#000000"
     function setColor(c) {
@@ -26,6 +27,23 @@ Item {
         val = _probe.hsvValue
     }
     function _emit() { cp.edited(cp.color) }
+    function _hex(c) {
+        function h(v) { return ("0" + Math.round(v * 255).toString(16)).slice(-2) }
+        return "#" + h(c.r) + h(c.g) + h(c.b)
+    }
+    function _applyHex(text) {
+        var t = text.trim()
+        if (t.length && t[0] !== "#") t = "#" + t
+        if (!/^#[0-9a-fA-F]{6}$/.test(t)) return false
+        setColor(t); _emit(); return true
+    }
+    function _applyRgb(text) {
+        var m = text.trim().match(/^\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*$/)
+        if (!m) return false
+        var r = Number(m[1]), g = Number(m[2]), b = Number(m[3])
+        if (r > 255 || g > 255 || b > 255) return false
+        setColor(Qt.rgba(r / 255, g / 255, b / 255, 1)); _emit(); return true
+    }
 
     // saturation (x) / value (y) square
     Rectangle {
@@ -97,6 +115,42 @@ Item {
             function upd(mx) { cp.hue = Math.max(0, Math.min(cp.hueMax, mx / width * cp.hueMax)); cp._emit() }
             onPressed: upd(mouseX)
             onPositionChanged: if (pressed) upd(mouseX)
+        }
+    }
+
+    // Numeric entry for precise colors. RGB uses the familiar comma-separated
+    // channel format (for example, 255, 80, 20); values are committed on Enter
+    // or when the field loses focus.
+    Row {
+        anchors.top: hueBar.bottom; anchors.topMargin: 8
+        width: parent.width; height: 26; spacing: 8
+        Rectangle {
+            width: (parent.width - parent.spacing) / 2; height: parent.height; radius: 5
+            color: Theme.bg; border.color: hexInput.activeFocus ? Theme.accent : Theme.cardBorder
+            border.width: 1
+            TextInput {
+                id: hexInput
+                anchors.fill: parent; anchors.leftMargin: 7; anchors.rightMargin: 4
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+                text: cp._hex(cp.color).toUpperCase()
+                selectByMouse: true
+                onEditingFinished: if (!cp._applyHex(text)) text = cp._hex(cp.color).toUpperCase()
+            }
+        }
+        Rectangle {
+            width: (parent.width - parent.spacing) / 2; height: parent.height; radius: 5
+            color: Theme.bg; border.color: rgbInput.activeFocus ? Theme.accent : Theme.cardBorder
+            border.width: 1
+            TextInput {
+                id: rgbInput
+                anchors.fill: parent; anchors.leftMargin: 7; anchors.rightMargin: 4
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+                text: Math.round(cp.color.r * 255) + ", " + Math.round(cp.color.g * 255) + ", " + Math.round(cp.color.b * 255)
+                selectByMouse: true
+                onEditingFinished: if (!cp._applyRgb(text)) text = Math.round(cp.color.r * 255) + ", " + Math.round(cp.color.g * 255) + ", " + Math.round(cp.color.b * 255)
+            }
         }
     }
 }
