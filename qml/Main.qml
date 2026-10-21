@@ -123,6 +123,14 @@ Window {
     function _parseTheme() {
         try { return JSON.parse(appearance.themeJson || "{}") } catch (e) { return {} }
     }
+    function _currentThemeMap() {
+        var colors = {}
+        for (var i = 0; i < Theme.themeKeys.length; i++) {
+            var key = Theme.themeKeys[i].key
+            colors[key] = Theme[key].toString()
+        }
+        return colors
+    }
     function applyThemeJson() { Theme.applyColors(_parseTheme()) }
     function setThemeColor(key, c) {
         Theme[key] = c
@@ -137,6 +145,25 @@ Window {
         appearance.themeJson = JSON.stringify(o)
     }
     function resetTheme() { Theme.resetColors(); appearance.themeJson = "{}" }
+    function applyImportedTheme(colorsJson) {
+        try {
+            var colors = JSON.parse(colorsJson)
+            Theme.resetColors(); Theme.applyColors(colors)
+            var normalized = {}
+            for (var i = 0; i < Theme.themeKeys.length; i++) {
+                var key = Theme.themeKeys[i].key
+                if (colors[key] !== undefined) normalized[key] = colors[key]
+            }
+            appearance.themeJson = JSON.stringify(normalized)
+            themeFileStatus = "Theme imported"
+            themeFileError = false
+        } catch (e) {
+            themeFileStatus = "Could not import theme: " + e
+            themeFileError = true
+        }
+    }
+    property string themeFileStatus: ""
+    property bool themeFileError: false
 
     // Is the chosen background a video (played by MediaPlayer) vs a still/gif
     // image (AnimatedImage)? Drives which background layer is active.
@@ -151,6 +178,34 @@ Window {
                       "Video (*.webm *.mp4 *.mkv *.mov *.m4v)",
                       "All files (*)"]
         onAccepted: appearance.bgImage = selectedFile.toString()
+    }
+    FileDialog {
+        id: exportThemeDialog
+        fileMode: FileDialog.SaveFile
+        title: "Export theme"
+        nameFilters: ["JSON files (*.json)"]
+        defaultSuffix: "json"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        onAccepted: {
+            var err = bridge.exportTheme(selectedFile, JSON.stringify(win._currentThemeMap()))
+            win.themeFileStatus = err ? "Could not export theme: " + err : "Theme exported"
+            win.themeFileError = !!err
+        }
+    }
+    FileDialog {
+        id: importThemeDialog
+        fileMode: FileDialog.OpenFile
+        title: "Import theme"
+        nameFilters: ["JSON files (*.json)"]
+        onAccepted: {
+            var result = bridge.importTheme(selectedFile)
+            if (result.indexOf("ERROR:") === 0) {
+                win.themeFileStatus = "Could not import theme: " + result.slice(6)
+                win.themeFileError = true
+            } else {
+                win.applyImportedTheme(result)
+            }
+        }
     }
 
     // Base wash: a faint themed glow at the top (Theme.bgGlow) fading into the
@@ -900,6 +955,21 @@ Window {
                                     onClicked: win.applyPreset(modelData.colors)
                                 }
                             }
+                            PillButton { label: "Import…"; onClicked: importThemeDialog.open() }
+                            PillButton {
+                                label: "Export…"
+                                onClicked: {
+                                    exportThemeDialog.selectedFile = exportThemeDialog.currentFolder + "/deadband-theme.json"
+                                    exportThemeDialog.open()
+                                }
+                            }
+                        }
+                        Text {
+                            visible: win.themeFileStatus.length > 0
+                            width: parent.width; wrapMode: Text.WordWrap
+                            text: win.themeFileStatus
+                            color: win.themeFileError ? Theme.warn : Theme.ok
+                            font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
                         }
                         Text {
                             text: "Custom colors"; color: Theme.textDim; topPadding: 4

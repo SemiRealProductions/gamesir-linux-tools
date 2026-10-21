@@ -13,7 +13,9 @@ Two cadences:
 """
 
 import copy
+import json
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -2232,6 +2234,43 @@ class GamesirBridge(QObject):
     def _to_path(url_or_path):
         u = QUrl(url_or_path)
         return u.toLocalFile() if u.isLocalFile() else url_or_path
+
+    @Slot(str, str, result=str)
+    def exportTheme(self, url, colors_json):
+        """Save a user theme as a portable, versioned JSON file."""
+        try:
+            colors = json.loads(colors_json)
+            if not isinstance(colors, dict):
+                raise ValueError('Theme colors must be a JSON object')
+            data = {'format': 'deadband-theme', 'version': 1, 'colors': colors}
+            with open(self._to_path(url), 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.write('\n')
+            return ''
+        except (OSError, ValueError, TypeError) as e:
+            return str(e)
+
+    @Slot(str, result=str)
+    def importTheme(self, url):
+        """Read and validate theme JSON; return normalized colors JSON or error."""
+        try:
+            with open(self._to_path(url), 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if (not isinstance(data, dict)
+                    or data.get('format') != 'deadband-theme'
+                    or data.get('version') != 1
+                    or not isinstance(data.get('colors'), dict)):
+                raise ValueError('Unsupported or malformed Deadband theme file')
+            allowed = {'accent', 'bg', 'bgGlow', 'card', 'cardBorder', 'navBar',
+                       'button', 'track', 'ringSelect', 'text', 'textDim'}
+            colors = data['colors']
+            if not colors or any(k not in allowed or not isinstance(v, str)
+                                 or not re.fullmatch(r'#[0-9a-fA-F]{6}', v)
+                                 for k, v in colors.items()):
+                raise ValueError('Theme contains invalid color values')
+            return json.dumps(colors)
+        except (OSError, ValueError, TypeError) as e:
+            return 'ERROR:' + str(e)
 
     @Property(str, constant=True)
     def defaultBackupName(self):
