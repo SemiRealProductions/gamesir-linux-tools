@@ -18,7 +18,14 @@ cython-hidapi is installed it is passed straight through, untouched. When only
 pyhidapi is, a thin adapter gives it the cython-hidapi shape. pyhidapi loads the
 system ``libhidapi-hidraw`` first, so it gets the hidraw backend the app needs.
 """
-import hid as _hid
+try:
+    # cython-hidapi built with BOTH backends (some distro packages) installs the
+    # hidraw one as `hidraw` and keeps `hid` for libusb, which can't open
+    # /dev/hidraw paths -- so prefer `hidraw` when it's there (#36, thanks
+    # @Barracuda72). Same API as `hid`; absent on single-backend builds.
+    import hidraw as _hid
+except ImportError:
+    import hid as _hid
 
 if hasattr(_hid, 'device'):
     # cython-hidapi: the API the app is written against. No wrapping at all.
