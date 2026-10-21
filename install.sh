@@ -195,6 +195,16 @@ exec "$PY" "$REPO/deadband.py" "\$@"
 EOF
 chmod +x "$BIN/$APP_ID"
 
+# Shell completions ---------------------------------------------------------
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+install -Dm644 "$REPO/completions/bash/deadband" \
+  "$DATA_HOME/bash-completion/completions/deadband"
+install -Dm644 "$REPO/completions/zsh/_deadband" \
+  "$DATA_HOME/zsh/site-functions/_deadband"
+install -Dm644 "$REPO/completions/fish/deadband.fish" \
+  "$CONFIG_HOME/fish/completions/deadband.fish"
+
 # 4. icons ------------------------------------------------------------------
 install -Dm644 "$REPO/assets/icon.png"     "$ICON_DIR/256x256/apps/$APP_ID.png"
 install -Dm644 "$REPO/assets/icon-128.png" "$ICON_DIR/128x128/apps/$APP_ID.png"
@@ -234,6 +244,10 @@ gtk-update-icon-cache -f "$ICON_DIR" 2>/dev/null || true
 
 echo
 echo "==> Done. Find 'Deadband' in your app launcher, or run: $APP_ID"
+echo "    Bash and Fish completions are installed in your user directories."
+echo "    For Zsh, add this to ~/.zshrc if your completion path doesn't include it:"
+echo "        fpath=(\"$DATA_HOME/zsh/site-functions\" \$fpath)"
+echo "        autoload -Uz compinit && compinit"
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo "    (Note: add ~/.local/bin to your PATH to use the '$APP_ID' command.)" ;;

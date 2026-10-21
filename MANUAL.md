@@ -17,6 +17,9 @@ the app's architecture, and reverse-engineering findings, see
 ## Using the app
 
 Launch it from your app menu as **Deadband**, or run `deadband` from a terminal.
+Run `deadband --help` for terminal options or `deadband --version` to print the
+installed version. Bash, Zsh, and Fish completions are included with the source
+installer and Arch package.
 Everything below assumes the controller is connected and in **Xbox / XInput
 mode**. A G7 Pro at `3537:100a` is transitioned automatically to wired `3537:109b`
 or dongle `3537:109c`. If it shows `3537:1022`, hold **SHARE + MENU (☰)** together (note this

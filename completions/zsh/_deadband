@@ -1,0 +1,6 @@
+#compdef deadband
+
+_arguments \
+  '(-h --help)'{-h,--help}'[show this help message and exit]' \
+  '--doctor[print device-access diagnostics and exit]' \
+  '--version[show program version and exit]'

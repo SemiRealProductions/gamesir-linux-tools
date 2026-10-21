@@ -13,15 +13,34 @@ Run:  python3 deadband.py
 Diagnose device-access problems (headless, no GUI):  deadband --doctor
 """
 
+import argparse
 import os
 import sys
 import threading
+from version import __version__
 
-# --doctor: print the device-access diagnostic report and exit — BEFORE any Qt
-# import side effects, so it works over SSH / in a broken graphical session.
-if '--doctor' in sys.argv:
-    from doctor import run_cli
-    raise SystemExit(run_cli())
+# Handle terminal options before importing Qt so help, version and diagnostics
+# work on headless machines and when the GUI dependencies are unavailable.
+def _parse_cli():
+    parser = argparse.ArgumentParser(
+        prog='deadband',
+        description='Configure supported GameSir controllers and Logitech mice.',
+        epilog=('Run without options to open the graphical app. Shell completions '
+                'are available for Bash, Zsh, and Fish.'),
+    )
+    parser.add_argument('--doctor', action='store_true',
+                        help='print device-access diagnostics and exit')
+    parser.add_argument('--version', action='version',
+                        version=f'%(prog)s {__version__}')
+    options, passthrough = parser.parse_known_args()
+    if options.doctor:
+        from doctor import run_cli
+        raise SystemExit(run_cli())
+    # Leave any Qt command-line arguments for QGuiApplication.
+    sys.argv[:] = [sys.argv[0], *passthrough]
+
+
+_parse_cli()
 
 from PySide6.QtCore import QUrl, QSettings
 from PySide6.QtGui import QGuiApplication, QIcon
@@ -32,8 +51,6 @@ from bridge import GamesirBridge
 from mouse_bridge import MouseBridge
 import kwin
 import mousegrab
-
-from version import __version__          # noqa: E402  (kept here for QML)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 QML_DIR = os.path.join(HERE, 'qml')
