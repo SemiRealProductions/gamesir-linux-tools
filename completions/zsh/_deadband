@@ -3,4 +3,5 @@
 _arguments \
   '(-h --help)'{-h,--help}'[show this help message and exit]' \
   '--doctor[print device-access diagnostics and exit]' \
+  '--probe[with --doctor: read-only device questions]' \
   '--version[show program version and exit]'

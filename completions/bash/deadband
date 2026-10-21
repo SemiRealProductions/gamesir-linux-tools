@@ -1,6 +1,6 @@
 _deadband() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local options="-h --help --doctor --version"
+    local options="-h --help --doctor --probe --version"
     COMPREPLY=( $(compgen -W "${options}" -- "${cur}") )
 }
 complete -F _deadband deadband

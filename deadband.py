@@ -30,6 +30,9 @@ def _parse_cli():
     )
     parser.add_argument('--doctor', action='store_true',
                         help='print device-access diagnostics and exit')
+    parser.add_argument('--probe', action='store_true',
+                        help='with --doctor: also ask connected devices a few '
+                             'read-only questions (close Deadband first)')
     parser.add_argument('--version', action='version',
                         version=f'%(prog)s {__version__}')
     options, passthrough = parser.parse_known_args()
