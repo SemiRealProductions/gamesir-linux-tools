@@ -409,8 +409,10 @@ def read_controller():
         if prof is profiles.G7_SE_OTHER:
             state['connected'] = True
             state['mode_ok'] = False
-            state['config_status'] = ('G7 SE in DirectInput mode: plug it in before '
-                                      'booting to get Xbox mode')
+            # 1082 (DirectInput) usually, or 10a0 (XInput) with a usbcore quirk
+            # (#41) -- both input-only, so don't name one of them
+            state['config_status'] = ('G7 SE in an input-only mode: plug it in before '
+                                      'booting to get its configurable Xbox mode')
             state['config_phase'] = 'failed'
             read_session_evdev(sel['id'], force_wrong_mode=True)
             state['connected'] = False

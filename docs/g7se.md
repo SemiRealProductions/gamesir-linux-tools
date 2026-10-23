@@ -30,7 +30,8 @@ listed in `SETTINGS_664` and `REMAP_SLOTS` in `vendors/gamesir/models/g7se/proto
 
 How each was verified: L4/R4 and the report rate match Nexus 2.5.8 USBPcap
 writes byte for byte. Everything else uses the G7 Pro encoding, and every address
-in `SETTINGS_664` and `REMAP_SLOTS` was written on bank 3 by
+in `SETTINGS_664` (plus the A, D-pad Up, Menu, LT and RT remap slots; the other
+front-button slots share their encoding but weren't written) was written on bank 3 by
 `tools/g7se_write_test_664.py`: left and right copies, each deadzone and
 anti-deadzone byte, and all four curve blocks. Each write changed exactly its own
 bytes, and the bank was restored byte-exact. That proves storage; the effect on the pad
