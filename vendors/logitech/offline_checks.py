@@ -88,7 +88,10 @@ def macro(text):
 
 
 def main():
-    remap.backup_all = lambda *a, **k: os.path.join(tempfile.mkdtemp(), 'b.txt')
+    # config imports `remap` by its bare name, a different module object from
+    # vendors.logitech.remap: patch the one config calls, or the fakes' backups
+    # land in the real mouse-backups folder
+    config.remap.backup_all = lambda *a, **k: os.path.join(tempfile.mkdtemp(), 'b.txt')
 
     print('\n== macro slots: editing one button must not leak a slot ==')
     dev = FakeMouse()
