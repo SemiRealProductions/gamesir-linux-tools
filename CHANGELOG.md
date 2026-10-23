@@ -7,12 +7,27 @@ curated, user-facing summary; the complete history is in git. Format loosely fol
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-23
+
 ### Added
+- **G502 X first-time setup**: a mouse that never met G HUB is still on its
+  read-only factory profiles, which Deadband refused to edit ("profile CRC not
+  OK"). The mouse pages now offer a one-time **Set up editable profiles** that
+  copies them into editable slots, the way G HUB does (#28, thanks
+  [@Odecam1](https://github.com/Odecam1) for the diagnostics).
+- **Gruvbox theme, and theme import/export**. Contributed by
+  [@JoaoVitorSCS1999](https://github.com/JoaoVitorSCS1999) (#35).
+- **RGB and HEX inputs** in the colour picker. Contributed by
+  [@JoaoVitorSCS1999](https://github.com/JoaoVitorSCS1999) (#34).
+- `deadband --help`, `deadband --version`, and Bash / Zsh / Fish completions.
+  Contributed by [@JoaoVitorSCS1999](https://github.com/JoaoVitorSCS1999) (#33).
 - **GameSir G7 SE firmware 6.64** (`3537:1069`): every button's remap
   (including LT/RT), sticks (deadzones, curves, sensitivity, invert,
   trajectory), triggers (deadzones, curves, hair trigger), grip and trigger
   vibration with motor tests, per-profile report rate, and Backup & Restore.
-  The `1082` fallback is no longer mistaken for a Kaleid. See
+  The `1082` fallback is no longer mistaken for a Kaleid, and a pad held on
+  `10a0` is described as input-only. Contributed and hardware-tested by
+  [@guarienteherbert-ux](https://github.com/guarienteherbert-ux) (#31). See
   [docs/g7se.md](docs/g7se.md#firmware-664-35371069).
 - `deadband --doctor --probe`: opt-in, read-only device questions for bug
   reports — a G502 X's firmware, onboard-profile layout and per-profile
@@ -21,9 +36,17 @@ curated, user-facing summary; the complete history is in git. Format loosely fol
   of a connected Cyclone 2 / G7 Pro 8K / Tarantula (to learn how GameSir's app
   stores key combinations).
 
+### Changed
+- On systems whose hidapi bindings install both backends (`hidraw` and the
+  libusb `hid`), Deadband now uses `hidraw`. The libusb one can't open
+  `/dev/hidraw` devices, which showed up as a misleading "reinstall hidapi"
+  warning (#36, thanks [@Barracuda72](https://github.com/Barracuda72)).
+
 ### Fixed
 - Closing Deadband printed hundreds of "Cannot read property … of null" lines;
   the interface is now torn down before the parts it reads from.
+- Closing Deadband could also print HID errors from cleanup running during
+  Python's shutdown. Contributed by [@ry2x](https://github.com/ry2x) (#38).
 
 ## [0.5.0] — 2026-10-13
 

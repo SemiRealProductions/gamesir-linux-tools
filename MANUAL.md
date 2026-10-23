@@ -125,6 +125,20 @@ Edits stage into a pending bar rather than applying as you click. Nothing reache
 the mouse until you press **Apply**, which writes once and reads the result back to
 confirm it. A backup of the profile being written is saved first, every time.
 
+### First-time setup
+
+A G502 X that has never been set up by Logitech G HUB is still running its two
+**factory profiles**, which live in read-only memory and can't be edited. In that
+case the mouse pages show **Set up editable profiles (one-time)** instead of their
+settings. It copies the factory profiles into editable slots, the same thing G HUB
+does the first time it sees the mouse, so your current settings carry over
+unchanged. A backup is saved first, every copy is read back to confirm it, and the
+profile list is written last, so if anything goes wrong the mouse keeps running its
+factory profiles as before.
+
+If a slot already holds data Deadband doesn't recognise, setup leaves it alone and
+changes nothing.
+
 ### Mouse profiles
 
 The mouse stores **five profiles**, shown as pills in the header. Two different
