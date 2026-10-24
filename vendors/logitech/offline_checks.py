@@ -296,6 +296,61 @@ def main():
     check('if the profile list fails, the mouse keeps its factory profiles',
           not ok and config.factory_only(dev) and dev.current == ROM_GOOD, msg)
 
+    print('\n== a macro already on the mouse reads back into editable steps ==')
+    mac = config.macros
+    defs = [
+        {'steps': [{'t': 'key', 'combo': 'ctrl+c', 'hold': 0, 'delay': 30},
+                   {'t': 'key', 'combo': 'ctrl+v', 'hold': 50, 'delay': 0}]},
+        {'steps': [{'t': 'text', 'text': 'Hello, World!', 'delay': 20},
+                   {'t': 'key', 'combo': 'enter', 'hold': 0, 'delay': 0}]},
+        {'steps': [{'t': 'click', 'button': 1, 'hold': 10, 'delay': 30},
+                   {'t': 'click', 'button': 5, 'hold': 0, 'delay': 0}], 'repeat': True},
+        {'steps': [{'t': 'media', 'code': 0xCD, 'delay': 0},
+                   {'t': 'scroll', 'delta': -3, 'delay': 100}]},
+        {'steps': [{'t': 'key', 'combo': 'shift+alt+f4', 'hold': 0, 'delay': 0},
+                   {'t': 'key', 'combo': 'rctrl+num5', 'hold': 5, 'delay': 5}], 'speed': 2.0},
+    ]
+    for d in defs:
+        body = config.build_macro_body(d)
+        back = config.steps_from_ops([r for r in mac.walk(body) if r[0] != 'end'])
+        check('decoded macro rebuilds byte for byte: '
+              + ' · '.join(config.macro_step_label(x) for x in d['steps']),
+              back is not None and config.build_macro_body(back) == body)
+    for label, raw in (('overlapping keys', mac.press(4) + mac.press(5) + mac.release(4) + mac.release(5)),
+                       ('a leading pause', mac.delay(10) + mac.press(4) + mac.release(4)),
+                       ('a mouse move', bytes([0x61, 0, 1, 0, 1])),
+                       ('two buttons at once', mac.mouse_press(3) + mac.mouse_release(3))):
+        ops = [r for r in mac.walk(raw + mac.END) if r[0] != 'end']
+        check(f'a macro with {label} is not shown as something else',
+              config.steps_from_ops(ops) is None)
+
+    long = {'steps': [{'t': 'text', 'text': 'The quick brown fox jumps over the lazy dog. ' * 3,
+                       'delay': 10}]}
+    body = config.build_macro_body(long)
+    chunks = mac.split_body(body, SIZE, 4)
+    secs = [7, 9, 12, 13][:len(chunks)]
+
+    class ChainMouse:
+        mem = {}
+
+        def read_sector(self, sec, size):
+            return self.mem[sec]
+    for k, (sec, chunk) in enumerate(zip(secs, chunks)):
+        tail = mac.jump(secs[k + 1], 0) if k + 1 < len(chunks) else b''
+        ChainMouse.mem[sec] = mac.to_sector(chunk + tail, SIZE)
+    ops = config.read_macro_ops(ChainMouse(), secs[0], 0, SIZE)
+    back = config.steps_from_ops(ops) if ops is not None else None
+    check(f'a macro chained over {len(chunks)} sectors reads back whole',
+          len(chunks) > 1 and back is not None and config.build_macro_body(back) == body)
+    ChainMouse.mem[15] = mac.to_sector(mac.press(4) + mac.release(4) + mac.jump(15, 0), SIZE)
+    check('a chain that loops on itself is refused', config.read_macro_ops(ChainMouse(), 15, 0, SIZE) is None)
+
+    dev = FakeMouse()
+    ok, msg = config.apply_edits(dev, INFO, HEADERS, 1, macro_changes={3: macro('saved')})
+    saved = config.profile_bindings(dev, 1, SIZE)['macros'].get(3)
+    check('profile_bindings returns the saved macro for the macros tab',
+          ok and saved and [s.get('text') for s in saved['steps']] == ['saved'], msg)
+
     print()
     if failures:
         print(f'FAILED ({len(failures)}): ' + '; '.join(failures))
