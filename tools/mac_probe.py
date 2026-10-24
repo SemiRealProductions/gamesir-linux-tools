@@ -11,7 +11,9 @@ active profile, one 16-byte settings read -- the same ones `deadband --doctor
 --probe` asks on Linux), and asks a G502 X for its onboard-profile layout.
 Nothing is written to any device's settings. Works on Linux too, for comparison.
 
-Needs only the hidapi Python package: `python3 -m pip install hidapi`.
+Needs the hidapi Python package: `python3 -m pip install hidapi`. To also reach
+a GameSir device whose HID interface the system left without a driver (a Cyclone
+2 dongle on macOS does this), add `python3 -m pip install pyusb libusb-package`.
 """
 import os
 import platform
@@ -72,6 +74,24 @@ def _drain(dev, seconds, stats=None):
     return out
 
 
+def _questions(dev):
+    stats = {'input': 0, 'live': 0}
+    try:
+        for _ in range(3):                      # spaced, like the app's own
+            _send(dev, HEARTBEAT)
+            _drain(dev, 0.3, stats)
+    except Exception as e:                       # noqa: BLE001
+        print(f'    heartbeat refused ({e}); not a command interface')
+        return
+    for label, cmd, kind in READS:              # one at a time: a question sent
+        _send(dev, cmd)                         # right after another gets dropped
+        got = [r for r in _drain(dev, 1.0, stats) if len(r) > 1 and r[1] == kind]
+        print(f'    {label}: ' + (got[0].hex(' ') if got else 'no reply'))
+    if stats['input'] and not stats['live']:
+        print(f"    note: {stats['input']} input reports, all empty: is the "
+              'controller switched on (not just its dongle plugged in)?')
+
+
 def ask_gamesir(found):
     print('\n## GameSir: the three read questions, per vendor interface')
     # Linux lists a device's collections under one path; macOS gives each its
@@ -87,21 +107,7 @@ def ask_gamesir(found):
         try:
             dev.open_path(path)
             dev.set_nonblocking(True)
-            stats = {'input': 0, 'live': 0}
-            try:
-                for _ in range(3):              # spaced, like the app's own
-                    _send(dev, HEARTBEAT)
-                    _drain(dev, 0.3, stats)
-            except Exception as e:               # noqa: BLE001
-                print(f'    heartbeat refused ({e}); not a command interface')
-                continue
-            for label, cmd, kind in READS:      # one at a time: a question sent
-                _send(dev, cmd)                 # right after another gets dropped
-                got = [r for r in _drain(dev, 1.0, stats) if len(r) > 1 and r[1] == kind]
-                print(f'    {label}: ' + (got[0].hex(' ') if got else 'no reply'))
-            if stats['input'] and not stats['live']:
-                print(f"    note: {stats['input']} input reports, all empty: is the "
-                      'controller switched on (not just its dongle plugged in)?')
+            _questions(dev)
         except Exception as e:                   # noqa: BLE001
             print(f'    could not open it: {e!r}')
         finally:
@@ -111,6 +117,91 @@ def ask_gamesir(found):
                 pass
     if not paths:
         print('- no GameSir vendor interfaces to ask')
+
+
+class _RawHid:
+    """A HID interface opened over raw USB, with hidapi's write/read shape.
+    Writes use the interrupt OUT endpoint, or SET_REPORT when there is none."""
+
+    def __init__(self, usb, dev, intf):
+        self.usb, self.dev, self.num = usb, dev, intf.bInterfaceNumber
+        eps = {e.bEndpointAddress & 0x80: e for e in intf
+               if usb.util.endpoint_type(e.bmAttributes) == usb.util.ENDPOINT_TYPE_INTR}
+        self.ep_in, self.ep_out = eps.get(0x80), eps.get(0x00)
+        self.detached = False
+        try:
+            if dev.is_kernel_driver_active(self.num):    # never on macOS here
+                dev.detach_kernel_driver(self.num)
+                self.detached = True
+        except (NotImplementedError, usb.core.USBError):
+            pass
+        usb.util.claim_interface(dev, self.num)
+
+    def write(self, data):
+        data = bytes(data)
+        if self.ep_out is not None:
+            return self.ep_out.write(data, timeout=200)
+        return self.dev.ctrl_transfer(0x21, 0x09, 0x0200 | data[0], self.num, data, 200)
+
+    def read(self, n):
+        try:
+            return list(self.ep_in.read(n, timeout=20))
+        except self.usb.core.USBTimeoutError:
+            return []
+
+    def close(self):
+        self.usb.util.release_interface(self.dev, self.num)
+        if self.detached:
+            self.dev.attach_kernel_driver(self.num)
+        self.usb.util.dispose_resources(self.dev)
+
+
+def ask_raw_usb(found):
+    """GameSir devices with NO HID interface listed (so never one a system HID
+    driver is using): find their HID-class interface and ask it directly."""
+    print('\n## GameSir over raw USB (devices hidapi could not see)')
+    try:
+        import usb.core
+        import usb.util
+        import libusb_package
+        backend = libusb_package.get_libusb1_backend()
+    except Exception as e:                       # noqa: BLE001
+        print(f'- skipped ({e}); to include it: python3 -m pip install pyusb libusb-package')
+        return
+    visible = {d['product_id'] for d in found if d['vendor_id'] == GAMESIR}
+    asked = 0
+    for dev in usb.core.find(find_all=True, idVendor=GAMESIR, backend=backend):
+        if dev.idProduct in visible:
+            continue
+        try:
+            cfg = dev.get_active_configuration()
+        except Exception as e:                   # noqa: BLE001
+            asked += 1
+            print(f'- {dev.idProduct:04x}: could not open it ({e})')
+            continue
+        for intf in cfg:
+            if intf.bInterfaceClass != 3:
+                continue
+            asked += 1
+            print(f'- {dev.idProduct:04x} interface {intf.bInterfaceNumber} (HID class, no driver)')
+            raw = None
+            try:
+                raw = _RawHid(usb, dev, intf)
+                print(f"    endpoints: in {'yes' if raw.ep_in else 'NO'}, "
+                      f"out {'yes' if raw.ep_out else 'no (using SET_REPORT)'}")
+                if raw.ep_in is None:
+                    continue
+                _questions(raw)
+            except Exception as e:               # noqa: BLE001
+                print(f'    could not use it: {e!r}')
+            finally:
+                if raw is not None:
+                    try:
+                        raw.close()
+                    except Exception:            # noqa: BLE001
+                        pass
+    if not asked:
+        print('- none (every GameSir device present is visible to hidapi)')
 
 
 def ask_mouse():
@@ -146,4 +237,5 @@ if __name__ == '__main__':
           f'hidapi {getattr(hid, "__version__", "?")}\n')
     devices = list_devices()
     ask_gamesir(devices)
+    ask_raw_usb(devices)
     ask_mouse()
