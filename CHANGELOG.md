@@ -7,6 +7,20 @@ curated, user-facing summary; the complete history is in git. Format loosely fol
 
 ## [Unreleased]
 
+### Added
+- **macOS support (early).** Deadband runs on macOS from source; tested on
+  Apple Silicon with a Cyclone 2, a Tarantula Pro 8K and a G502 X (remaps,
+  live input, profiles, lighting, mouse pages). A Cyclone 2 dongle there leaves
+  its settings interface without a driver, so Deadband reaches it over USB
+  directly (PyUSB + libusb-package). `--doctor` gives a Mac-specific report.
+  Press-to-select, and configuring the G7 Pro / Kaleid / G7 SE, stay
+  Linux-only for now. Setup: [docs/macos.md](docs/macos.md).
+
+### Fixed
+- The G502 X macros tab opened empty for a button that already had a macro
+  saved on the mouse. Saved macros now load into the editor; one made in
+  another app that the editor can't represent says so instead.
+
 ## [0.6.0] — 2026-10-23
 
 ### Added

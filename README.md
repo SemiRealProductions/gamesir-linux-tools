@@ -261,6 +261,13 @@ Afterwards **Deadband** is in your app launcher (or run `deadband`). To remove
 it, run `./uninstall.sh`. Upgrading from the old `gamesir-cyclone2` install?
 `install.sh` cleans it up, and your settings carry over on first run.
 
+### macOS (early)
+
+Deadband now runs on macOS too, from source for the moment. It's been tested
+on Apple Silicon with a Cyclone 2, a Tarantula Pro 8K and a G502 X. The
+three-command setup and what differs from Linux are in
+**[docs/macos.md](docs/macos.md)**.
+
 ## Running
 
 Put the controller in **Xbox / XInput mode** (on the Tarantula Pro 8K, **PC mode**:
