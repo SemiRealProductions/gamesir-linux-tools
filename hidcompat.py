@@ -38,11 +38,48 @@ if hasattr(_hid, 'device'):
     __version__ = getattr(_hid, '__version__', '?')
 
     class device(_hid.device):
+        # A `usb:` path is a HID interface with no system driver (a Cyclone
+        # dongle on macOS): rawhid opens it over libusb and every call below
+        # goes there instead.
+        _raw = None
+
         def open_path(self, path):
+            if (path.decode() if isinstance(path, bytes) else path).startswith('usb:'):
+                import rawhid
+                raw = rawhid.Device()
+                raw.open_path(path)
+                self._raw = raw
+                return
             super().open_path(path)
             for ref in _gc.get_referents(self):
                 if hasattr(ref, 'atexit'):
                     ref.atexit = False
+
+        def read(self, max_length, timeout_ms=0):
+            if self._raw is not None:
+                return self._raw.read(max_length, timeout_ms)
+            return super().read(max_length, timeout_ms)
+
+        def write(self, buff):
+            if self._raw is not None:
+                return self._raw.write(buff)
+            return super().write(buff)
+
+        def set_nonblocking(self, v):
+            if self._raw is not None:
+                return self._raw.set_nonblocking(v)
+            return super().set_nonblocking(v)
+
+        def get_product_string(self):
+            if self._raw is not None:
+                return self._raw.get_product_string()
+            return super().get_product_string()
+
+        def close(self):
+            if self._raw is not None:
+                self._raw.close()
+                return
+            super().close()
 
         def open(self, vendor_id=0, product_id=0, serial_number=None):
             super().open(vendor_id, product_id, serial_number)

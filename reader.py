@@ -317,8 +317,8 @@ def read_controller():
         profiles.set_active(prof)                      # rest of app follows this
         state['controller'] = prof.short if prof else None
         state['usb_bcd'] = _bcd
-        state['firmware'] = firmware_version(sel['nodes'][0]) if sel['nodes'] else (
-            f'{_bcd >> 8:x}.{_bcd & 0xff:02x}' if _bcd else None)
+        state['firmware'] = (firmware_version(sel['nodes'][0]) if sel['nodes'] else None) or (
+            f'{_bcd >> 8:x}.{_bcd & 0xff:02x}' if _bcd else None)   # no sysfs (macOS)
         state['wired'] = _is_wired(prof, sel['pid'], _bcd)   # wired / dongle hint
 
         if prof is profiles.G7_PRO:

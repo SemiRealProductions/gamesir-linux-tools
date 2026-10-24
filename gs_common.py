@@ -101,6 +101,8 @@ def find_controllers():
     sysfs, then attach any hidraw nodes belonging to the same topology.  The
     returned ``usb`` metadata lets the G7 transport open the exact Linux USB
     device without confusing two identical receivers."""
+    if not os.path.isdir('/sys/bus/usb/devices'):
+        return _find_controllers_portable()
     by_dev = {}
     for devdir in sorted(glob.glob('/sys/bus/usb/devices/*')):
         if not os.path.isfile(os.path.join(devdir, 'idVendor')):
@@ -168,6 +170,54 @@ def find_controllers():
                                          'usb': None, 'bcd': None})
         entry['nodes'].append(f'/dev/{name}')
     return list(by_dev.values())
+
+
+def _find_controllers_portable():
+    """find_controllers() without Linux's sysfs (macOS): the same entries, built
+    from hidapi's list plus, when PyUSB is installed, the USB bus itself.
+
+    hidapi gives each device one or more paths but no USB location, so its
+    entries are matched to a USB device by product id; that gives them the same
+    `bus-port` ids as on Linux. A device whose HID interface has no system
+    driver (a Cyclone dongle on macOS) has no hidapi entry at all, so it gets a
+    rawhid `usb:` path instead. Two identical controllers can't be told apart by
+    product id, so without a match they get numbered ids; `usb` is None, as the
+    raw G7 transports are Linux-only for now."""
+    import rawhid
+    usb_devs = rawhid.devices(VENDOR_VID)
+    groups = {}                              # (pid, serial) -> hidapi entries
+    try:
+        listed = hid.enumerate()
+    except Exception:
+        listed = []
+    for d in listed:
+        if d.get('vendor_id') == VENDOR_VID:
+            groups.setdefault((d.get('product_id'), d.get('serial_number') or ''),
+                              []).append(d)
+    out = []
+    for n, ((pid, _serial), entries) in enumerate(sorted(groups.items(),
+                                                         key=lambda g: g[0][0])):
+        paths = []
+        for d in sorted(entries, key=lambda d: -(d.get('usage_page') or 0)):
+            p = d.get('path')
+            p = p.decode(errors='replace') if isinstance(p, bytes) else p
+            if p and p not in paths:          # vendor pages first: most likely the channel
+                paths.append(p)
+        same = [u for u in usb_devs if u['pid'] == pid]
+        port = same[0]['port'] if len(same) == 1 else f'hid-{pid:04x}-{n}'
+        rel = entries[0].get('release_number')
+        out.append({'id': port, 'port': port, 'pid': pid,
+                    'product': entries[0].get('product_string') or '',
+                    'nodes': paths, 'usb': None, 'bcd': rel or None})
+    seen = {c['pid'] for c in out}
+    for u in usb_devs:
+        if u['pid'] in seen or not u['hid_interfaces']:
+            continue
+        out.append({'id': u['port'], 'port': u['port'], 'pid': u['pid'],
+                    'product': u['product'],
+                    'nodes': [rawhid.path_for(u['port'], i) for i in u['hid_interfaces']],
+                    'usb': None, 'bcd': u['bcd']})
+    return out
 
 
 def parse_devices():
