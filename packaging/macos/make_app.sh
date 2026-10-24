@@ -43,12 +43,19 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Deadband.icns"
 rm -rf "$WORK"
 
+# A script can't say which CPU it's for, so macOS may start it under Rosetta
+# (Intel) on Apple Silicon, where the arm64 hidapi/Qt the venv installed won't
+# load. Ask for the native slice whenever the Mac has one.
 cat > "$APP/Contents/MacOS/Deadband" <<EOF
 #!/bin/sh
 mkdir -p "\$HOME/Library/Logs"
 exec >>"\$HOME/Library/Logs/Deadband.log" 2>&1
 echo "--- \$(date)"
-cd "$HERE" && exec "$PY" deadband.py "\$@"
+cd "$HERE" || exit 1
+if [ "\$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then
+    exec arch -arm64 "$PY" deadband.py "\$@"
+fi
+exec "$PY" deadband.py "\$@"
 EOF
 chmod +x "$APP/Contents/MacOS/Deadband"
 
@@ -67,6 +74,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleShortVersionString</key> <string>${VERSION:-0}</string>
     <key>LSApplicationCategoryType</key>  <string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key>    <true/>
+    <key>LSArchitecturePriority</key>
+    <array><string>arm64</string><string>x86_64</string></array>
 </dict>
 </plist>
 EOF
