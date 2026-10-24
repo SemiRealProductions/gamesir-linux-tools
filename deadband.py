@@ -101,7 +101,11 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)
     _migrate_settings()                 # must follow the names above
-    icon_path = os.path.join(ASSETS_DIR, 'icon.png')
+    # the 1024px art where it exists: macOS shows the window icon in the Dock,
+    # at Retina size
+    icon_path = os.path.join(ASSETS_DIR, 'icon-1024.png')
+    if not os.path.exists(icon_path):
+        icon_path = os.path.join(ASSETS_DIR, 'icon.png')
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 

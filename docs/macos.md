@@ -49,6 +49,25 @@ cd $HOME/deadband && $HOME/deadband-venv/bin/python deadband.py
 
 To update later, run `git pull` in the same folder.
 
+## Adding it to Launchpad
+
+To open Deadband like any other app (from Launchpad, Spotlight or the Dock),
+build a small launcher app for it once:
+
+```
+cd $HOME/deadband && sh packaging/macos/make_app.sh
+```
+
+That puts **Deadband.app**, with its icon, in your Applications folder. It runs
+the copy of Deadband in `$HOME/deadband`, so `git pull` updates it too; only if
+you move that folder do you need to run the command again. Since there's no
+Terminal window, anything Deadband prints goes to
+`~/Library/Logs/Deadband.log` (open it with the Console app), which is worth
+attaching to a bug report.
+
+While it's running, the menu bar and the Dock's hover label may still say
+"Python": the app is Python running Deadband, and macOS names it after that.
+
 ## Different from Linux
 
 - **The Cyclone 2 needs the USB packages from step 3.** On a Mac, its dongle
