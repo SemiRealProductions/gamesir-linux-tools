@@ -188,6 +188,146 @@ def macro_step_label(s):
     return str(t)
 
 
+# --- reading a stored macro back into steps -------------------------------------
+# The reverse of build_macro_body, so the macros tab can show (and edit) a macro
+# that's already on the mouse instead of an empty list. Anything the editor could
+# not have written -- a G HUB recording with overlapping keys, mouse moves, a
+# leading pause -- reads as None: better "can't show this" than a wrong copy that
+# would overwrite the real one on the next save. Speed isn't recoverable (it was
+# folded into the timings), so a decoded macro reads at 1x with those timings.
+_MOD_NAMES = (('ctrl', 0x01), ('shift', 0x02), ('alt', 0x04), ('meta', 0x08),
+              ('rctrl', 0x10), ('rshift', 0x20), ('ralt', 0x40), ('rmeta', 0x80))
+
+
+def _usage_names():
+    names = {}
+    for ch in 'abcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;\',./':
+        names.setdefault(macros.char_to_key(ch)[0], ch)
+    for name, usage in macros._NAMED.items():       # first spelling wins: 'enter', 'esc'
+        names.setdefault(usage, name)
+    return names
+
+
+_USAGE_NAMES = _usage_names()
+# (usage, shifted) -> the character Macro.type() would have typed for it
+_TYPED = {macros.char_to_key(ch): ch for ch in
+          'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+          ' `-=[]\\;\',./~!@#$%^&*()_+{}|:"<>?'}
+
+
+def _combo(mods, usage):
+    name = _USAGE_NAMES.get(usage)
+    if name is None or mods & ~0xFF:
+        return None
+    return '+'.join([n for n, bit in _MOD_NAMES if mods & bit] + [name])
+
+
+def read_macro_ops(dev, sector, address, size, max_sectors=8):
+    """The opcodes of the macro a button points at, following JUMPs across
+    sectors, without the JUMPs and END: [(name, *operands)]. None if the stream
+    is malformed, runs off a sector, or loops."""
+    ops, seen = [], set()
+    while (sector, address) not in seen and len(seen) < max_sectors:
+        seen.add((sector, address))
+        recs = macros.walk(dev.read_sector(sector, size), address)
+        for rec in recs:
+            if rec[0] == 'end':
+                return ops
+            if rec[0] == 'jump':
+                sector, address = (rec[1] << 8) | rec[2], (rec[3] << 8) | rec[4]
+                break
+            if rec[0] in ('truncated', 'unknown'):
+                return None
+            ops.append(rec)
+        else:
+            return None
+    return None
+
+
+def steps_from_ops(ops):
+    """Opcodes -> a macro def build_macro_body would turn back into the same
+    bytes ({'steps', 'repeat'}), or None when the editor can't represent them."""
+    steps, i, repeat = [], 0, False
+
+    def ms_at(j):
+        return (ops[j][1] << 8) | ops[j][2] if j < len(ops) and ops[j][0] == 'delay' else None
+
+    while i < len(ops):
+        name = ops[i][0]
+        if name == 'repeat-until-release' and i == len(ops) - 1:
+            repeat = True
+            break
+        if name in ('press', 'mouse-press'):
+            j, hold = i + 1, ms_at(i + 1)
+            if hold is not None:
+                j += 1
+            release = 'release' if name == 'press' else 'mouse-release'
+            if j >= len(ops) or ops[j][0] != release or ops[j][1:] != ops[i][1:]:
+                return None                       # overlapping / unpaired presses
+            if name == 'press':
+                combo = _combo(ops[i][1], ops[i][2])
+                if combo is None:
+                    return None
+                step = {'t': 'key', 'combo': combo, 'hold': hold or 0}
+            else:
+                mask = (ops[i][1] << 8) | ops[i][2]
+                if mask == 0 or mask & (mask - 1):
+                    return None                   # several buttons at once
+                step = {'t': 'click', 'button': mask.bit_length(), 'hold': hold or 0}
+            i = j + 1
+        elif name == 'consumer-press':
+            if i + 1 >= len(ops) or ops[i + 1] != ('consumer-release',) + ops[i][1:]:
+                return None
+            step = {'t': 'media', 'code': (ops[i][1] << 8) | ops[i][2]}
+            i += 2
+        elif name == 'wheel':
+            step = {'t': 'scroll', 'delta': ops[i][1] - 256 if ops[i][1] > 127 else ops[i][1]}
+            i += 1
+        else:
+            return None                           # a pause with nothing before it, etc.
+        after = ms_at(i)
+        step['delay'] = after or 0
+        if after is not None:
+            i += 1
+        steps.append(step)
+    if not steps:
+        return None
+    return {'steps': _join_typing(steps), 'repeat': repeat}
+
+
+def _join_typing(steps):
+    """Runs of plain keypresses that spell text (no hold, no pause between them)
+    back into one text step, the way the editor wrote them. Same bytes either way."""
+    out, run = [], []
+
+    def char(s):
+        if s['t'] != 'key' or s['hold']:
+            return None
+        mods, usage = macros.parse_combo(s['combo'])
+        return _TYPED.get((usage, True)) if mods == 0x02 else (
+            _TYPED.get((usage, False)) if mods == 0 else None)
+
+    def flush():
+        if len(run) >= 2:
+            out.append({'t': 'text', 'text': ''.join(c for c, _ in run),
+                        'delay': run[-1][1]['delay']})
+        else:
+            out.extend(s for _, s in run)
+        run.clear()
+
+    for s in steps:
+        c = char(s)
+        if c is None:
+            flush()
+            out.append(s)
+            continue
+        run.append((c, s))
+        if s['delay']:                            # a pause ends the typed text
+            flush()
+    flush()
+    return out
+
+
 def macro_summary(macrodef):
     """Short human label for a whole macro def (chips / button preview)."""
     parts = [macro_step_label(s) for s in _macro_steps(macrodef)]
@@ -409,7 +549,17 @@ def profile_bindings(dev, sector, size):
     def bank(src):
         return {i: {'kind': b.kind, 'detail': b.detail, 'label': friendly_binding(b)}
                 for i, b in enumerate(src)}
+
+    saved = {}                  # primary-bank macros, as the macros tab edits them
+    for i, b in enumerate(prof.buttons):
+        if b.kind == 'macro' and b.behavior == onboard.BEHAVIOR_MACRO_EXECUTE:
+            try:
+                ops = read_macro_ops(dev, b.macro_sector, b.macro_address, size)
+            except Exception:
+                ops = None
+            saved[i] = (steps_from_ops(ops) if ops is not None else None) or {'unreadable': True}
     return {'buttons': bank(prof.buttons), 'gbuttons': bank(prof.gbuttons),
+            'macros': saved,
             'sensor': {
                 'dpi': list(prof.resolutions),
                 'dpi_default': prof.default_dpi_index,

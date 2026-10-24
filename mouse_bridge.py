@@ -117,6 +117,7 @@ class MouseBridge(QObject):
         self._pending = {}              # {'<layer>:<button>': spec} — staged buttons
         self._pending_sensor = {}       # {'dpi:<i>'|'dpi_default'|'dpi_shift'|'report_rate': int}
         self._pending_macros = {}       # {button:int -> macrodef dict} — staged macros (primary bank)
+        self._saved_macros = {}         # {'button': macrodef | {'unreadable': True}} — on the mouse
         self._macro_slots_free = -1     # erased macro sectors available; -1 = not probed
         self._io = threading.Lock()     # serialize device access (worker threads)
         self._refreshing = False        # a refresh worker is running
@@ -221,7 +222,8 @@ class MouseBridge(QObject):
         def mk(d):
             return {str(i): (b['label'] or b['kind']) for i, b in d.items()}
         return {'buttons': mk(raw['buttons']), 'gbuttons': mk(raw['gbuttons']),
-                'sensor': raw['sensor']}
+                'sensor': raw['sensor'],
+                'macros': {str(i): m for i, m in raw.get('macros', {}).items()}}
 
     def _set_apply(self, msg):
         """Set the Apply toast. A message ending in '…' reads as in-progress: the
@@ -236,6 +238,8 @@ class MouseBridge(QObject):
     def _set_binds(self, binds):
         self._bindings = binds.get('buttons', {})
         self._gbindings = binds.get('gbuttons', {})
+        if 'macros' in binds:
+            self._saved_macros = binds['macros']
         self.bindingsChanged.emit()
         sensor = binds.get('sensor')
         rng = binds.get('range')
@@ -620,6 +624,13 @@ class MouseBridge(QObject):
         'speed':float}), or an empty map — lets the macros tab resume editing a
         macro already in the queue."""
         return dict(self._pending_macros.get(int(button), {}))
+
+    @Slot(int, result='QVariantMap')
+    def savedMacro(self, button):
+        """The macro saved on the mouse for a button, decoded back into steps, so
+        the macros tab opens on what's there; {'unreadable': True} for one the
+        editor can't represent (made elsewhere), or an empty map for none."""
+        return dict(self._saved_macros.get(str(int(button)), {}))
 
     @Property('QVariantList', constant=True)
     def mediaActions(self):

@@ -19,6 +19,7 @@ Item {
     property real speed: 1.0        // playback multiplier, higher = faster
     property int sel: -1
     property var clip: null
+    property bool unreadable: false  // a saved macro the editor can't show (made elsewhere)
 
     readonly property var speedSteps: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
     function speedLabel(v) { return (Math.round(v * 100) / 100) + "\u00d7" }
@@ -34,8 +35,11 @@ Item {
     readonly property bool hasSel: page.sel >= 0 && page.sel < page.steps.length
 
     // ---- load / persist ----------------------------------------------------
+    // what's staged for this button, else what's saved on the mouse
     function seed() {
         var m = page.btn >= 0 ? mouse.stagedMacro(page.btn) : ({})
+        if (!(m && m.steps) && page.btn >= 0) m = mouse.savedMacro(page.btn)
+        page.unreadable = !!(m && m.unreadable)
         page.steps = (m && m.steps) ? m.steps.map(function (s) { return Object.assign({}, s) }) : []
         page.repeat = m && m.repeat === true
         page.speed = (m && m.speed) ? m.speed : 1.0
@@ -46,6 +50,13 @@ Item {
         seed(); mouse.probeMacroSlots()
     }
     onBtnChanged: seed()
+    // the mouse read finished: show its saved macro, unless this button is being edited
+    Connections {
+        target: mouse
+        function onBindingsChanged() {
+            if (page.btn >= 0 && !stageTimer.running && !mouse.stagedMacro(page.btn).steps) page.seed()
+        }
+    }
     onVisibleChanged: if (visible) { seed(); mouse.probeMacroSlots() }
 
     Timer { id: stageTimer; interval: 250; onTriggered: page.restage() }
@@ -229,7 +240,9 @@ Item {
                     Text {
                         visible: page.steps.length === 0
                         width: parent.width; wrapMode: Text.WordWrap
-                        text: "Empty — + Add event, then pick what it does on the right (or ⏺ Record)."
+                        text: page.unreadable
+                              ? "This button's saved macro was made in another app, so it can't be shown here. Building a new one replaces it."
+                              : "Empty — + Add event, then pick what it does on the right (or ⏺ Record)."
                         color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
                     }
                     ListView {
