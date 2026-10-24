@@ -321,6 +321,18 @@ def read_controller():
             f'{_bcd >> 8:x}.{_bcd & 0xff:02x}' if _bcd else None)   # no sysfs (macOS)
         state['wired'] = _is_wired(prof, sel['pid'], _bcd)   # wired / dongle hint
 
+        # These configure over raw USB located through sysfs (usb_transport),
+        # which macOS doesn't have, so they can't be opened that way there yet.
+        if (prof in (profiles.G7_PRO, profiles.KALEID, profiles.G7_SE)
+                and not sys.platform.startswith('linux')):
+            state['connected'] = True
+            state['mode_ok'] = False
+            state['config_status'] = (f'Configuring the {prof.short} is Linux-only for now '
+                                      '(its settings channel is reached a different way)')
+            state['config_phase'] = 'failed'
+            time.sleep(1.0)
+            continue
+
         if prof is profiles.G7_PRO:
             state['connected'] = True
             if state.get('config_wanted', True):

@@ -89,10 +89,12 @@ def _migrate_settings():
 def main():
     # Background side: identical to the Dear PyGui app.
     threading.Thread(target=read_controller, daemon=True).start()
-    # Press-to-select: switch the driven controller by pressing a button on it.
-    threading.Thread(target=press_select_loop, daemon=True).start()
-    if sys.platform.startswith('linux') and not kwin.available():
-        mousegrab.start()   # EVIOCGRAB fallback (non-KDE); KDE uses the KWin plugin
+    if sys.platform.startswith('linux'):
+        # Press-to-select: switch the driven controller by pressing a button on
+        # it. Watches evdev, which only Linux has; elsewhere the header picker.
+        threading.Thread(target=press_select_loop, daemon=True).start()
+        if not kwin.available():
+            mousegrab.start()   # EVIOCGRAB fallback (non-KDE); KDE uses the KWin plugin
 
     app = QGuiApplication(sys.argv)
     app.aboutToQuit.connect(release_controller)

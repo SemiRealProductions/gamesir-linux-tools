@@ -1178,7 +1178,7 @@ class GamesirBridge(QObject):
         hidapi build can't open hidraw paths (libusb backend). Drives the banner —
         the fix for the silent eternal "Searching…" from issue #1."""
         a = state.get('access')
-        return a if a in ('no-access', 'backend') else ''
+        return a if a in ('no-access', 'backend', 'needs-usb-lib', 'mac-open') else ''
 
     @Property(bool, constant=True)
     def isNixos(self):

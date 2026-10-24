@@ -293,7 +293,19 @@ def open_ladder(node):
 def classify_open_failure(node):
     """Cheap classifier for the reader: after hidapi failed to open `node`,
     say WHY — 'no-access' (fs permission) or 'backend' (hidapi build can't
-    open an openable node). Never raises."""
+    open an openable node). Never raises.
+
+    Without Linux's device files (macOS) there's no permission to fix: a raw
+    USB path fails for want of PyUSB/libusb-package ('needs-usb-lib'), anything
+    else because another app has the controller ('mac-open')."""
+    if not sys.platform.startswith('linux'):
+        try:
+            import rawhid
+            if str(node).startswith(rawhid.PREFIX) and not rawhid.available():
+                return 'needs-usb-lib'
+        except Exception:
+            pass
+        return 'mac-open'
     try:
         return open_ladder(node)['verdict']
     except Exception:
@@ -452,8 +464,143 @@ def _same_file(left, right):
         return False
 
 
+# ------------------------------------------------------------ not Linux (macOS)
+# Everything above reads Linux's sysfs, device files and udev rules. Elsewhere
+# there are no permissions to fix, so the report is what still matters: versions,
+# whether the raw-USB packages are there, and which controllers were found and
+# how Deadband reaches each one.
+
+def _os_portable():
+    mac = platform.mac_ver()[0]
+    return f'macOS {mac}' if mac else f'{platform.system()} {platform.release()}'
+
+
+def _collect_portable():
+    rep = {'portable': True, 'app': 'Deadband', 'version': _version(),
+           'os': _os_portable(), 'machine': platform.machine(),
+           'python': sys.version.split()[0], 'controllers': [], 'logitech': [],
+           'verdict': []}
+    try:
+        import hidcompat as hid
+        rep['hidapi'] = f'{getattr(hid, "IMPL", "hidapi")} {getattr(hid, "__version__", "?")}'
+    except Exception as e:
+        rep['hidapi'] = f'IMPORT FAILED ({e})'
+        rep['verdict'].append('hidapi is missing: python3 -m pip install hidapi')
+        return rep
+    try:
+        import rawhid
+        rep['raw_usb'] = rawhid.available()
+    except Exception:
+        rep['raw_usb'] = False
+    import controller_profile as profiles
+    from gs_common import find_controllers
+    try:
+        ctrls = find_controllers()
+    except Exception as e:
+        ctrls = []
+        rep['verdict'].append(f'Listing controllers failed: {e!r}')
+    for c in ctrls:
+        prof = profiles.detect_one(c['pid'], c.get('product'))
+        raw = any(n.startswith('usb:') for n in c['nodes'])
+        rep['controllers'].append({
+            'id': c['id'], 'pid': c['pid'], 'product': c.get('product') or '',
+            'model': prof.short if prof else 'not recognised', 'bcd': c.get('bcd'),
+            'via': 'raw USB' if raw else 'HID', 'nodes': list(c['nodes'])})
+        if raw and not rep['raw_usb']:
+            rep['verdict'].append(
+                f'GameSir {c["pid"]:04x} is only reachable over raw USB, and PyUSB / '
+                'libusb-package aren\'t installed. Fix:\n'
+                '    python3 -m pip install pyusb libusb-package')
+    logi = {}
+    for d in hid.enumerate():
+        if d.get('vendor_id') == 0x046D:
+            e = logi.setdefault(d.get('product_id'), {'pid': d.get('product_id'),
+                                                      'product': d.get('product_string') or '',
+                                                      'pages': []})
+            if (d.get('usage_page') or 0) not in e['pages']:
+                e['pages'].append(d.get('usage_page') or 0)
+    rep['logitech'] = list(logi.values())
+    if not ctrls and not rep['logitech']:
+        rep['verdict'].append('No GameSir or Logitech devices found. Check the cable or '
+                              'dongle, and that a wireless controller is switched on.')
+    elif not rep['verdict']:
+        rep['verdict'].append('Devices found. If one of them doesn\'t show up in Deadband, '
+                              'close Deadband and run `deadband --doctor --probe`, which '
+                              'asks each one a few read-only questions.')
+    return rep
+
+
+def _format_portable(rep):
+    L = ['## Deadband diagnostic report',
+         f'- Deadband {rep.get("version", "?")}',
+         f'- OS: {rep["os"]} ({rep.get("machine", "?")})',
+         f'- Python {rep["python"]}, {rep.get("hidapi", "?")}',
+         '- Raw USB (PyUSB + libusb-package): '
+         + ('installed' if rep.get('raw_usb') else 'not installed'), '',
+         '### Devices']
+    if not rep['controllers'] and not rep['logitech']:
+        L.append('(no GameSir/Logitech devices found)')
+    for c in rep['controllers']:
+        fw = f'  firmware {c["bcd"] >> 8:x}.{c["bcd"] & 0xff:02x}' if c.get('bcd') else ''
+        L.append(f'- GameSir {c["pid"]:04x} "{c["product"]}" -> {c["model"]}, '
+                 f'via {c["via"]}{fw}  [{c["id"]}]')
+    for d in rep['logitech']:
+        pages = ' '.join(f'0x{p:04x}' for p in d['pages'])
+        L.append(f'- Logitech {d["pid"]:04x} "{d["product"]}" (usage pages {pages})')
+    L += ['', '### Verdict'] + rep['verdict']
+    return '\n'.join(L)
+
+
+def _probe_gamesir_portable():
+    """The family's three read questions to every GameSir controller found,
+    over whichever path Deadband itself would use (HID, or raw USB)."""
+    import hidcompat as hid
+    from gs_common import find_controllers, pad
+    out = ['### Probe: GameSir controllers']
+    ctrls = find_controllers()
+    if not ctrls:
+        return out + ['- none found']
+    for c in ctrls:
+        out.append(f'- {c["pid"]:04x} "{c.get("product") or ""}" [{c["id"]}]')
+        for node in c['nodes']:
+            dev = hid.device()
+            try:
+                dev.open_path(node.encode())
+                dev.set_nonblocking(True)
+            except Exception as e:
+                out.append(f'    {node}: could not open ({e})')
+                continue
+            try:
+                for _ in range(3):                  # spaced: a question sent right
+                    dev.write(pad(0x0F, 0xF2))      # after a heartbeat is dropped
+                    time.sleep(0.3)
+                    while dev.read(64):
+                        pass
+                for label, cmd, kind in (('firmware', (0x0F, 0x09), 0x0A),
+                                         ('active profile', (0x0F, 0x0B), 0x0C),
+                                         ('bank 1 @0 x16', (0x0F, 0x04, 0x01, 0, 0, 0x10), 0x05)):
+                    dev.write(pad(*cmd))
+                    got, end = None, time.time() + 1.0
+                    while got is None and time.time() < end:
+                        r = dev.read(64)
+                        if r and r[0] == 0x10 and len(r) > 1 and r[1] == kind:
+                            got = bytes(r[:24]).hex(' ')
+                        time.sleep(0.003)
+                    out.append(f'    {node} {label}: {got or "no reply"}')
+            except Exception as e:
+                out.append(f'    {node}: failed ({e!r})')
+            finally:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+    return out
+
+
 def collect():
     """Gather the full diagnostic picture (structured)."""
+    if not sys.platform.startswith('linux'):
+        return _collect_portable()
     rep = {
         'app': 'Deadband',
         'version': _version(),
@@ -763,6 +910,8 @@ def collect():
 
 def format_report(rep):
     """The structured report as paste-into-an-issue text."""
+    if rep.get('portable'):
+        return _format_portable(rep)
     L = []
     L.append('## Deadband diagnostic report')
     L.append(f'- Deadband {rep.get("version", "?")}')
@@ -1123,7 +1272,9 @@ def probe():
     """The --probe sections, as report lines. Close Deadband first: it holds
     the same devices."""
     lines = ['', '## Probe (read-only device questions; close Deadband first)']
-    for part in (_probe_gamesir, _probe_buttons, _probe_g7_unconfirmed, _probe_mouse):
+    parts = ((_probe_gamesir, _probe_buttons, _probe_g7_unconfirmed, _probe_mouse)
+             if sys.platform.startswith('linux') else (_probe_gamesir_portable, _probe_mouse))
+    for part in parts:
         try:
             lines += [''] + part()
         except Exception as e:

@@ -608,7 +608,10 @@ Window {
                 id: accessCol
                 // the fix command for the diagnosed problem (udev vs hidapi
                 // backend); NixOS gets declarative-config fixes for both
-                readonly property string fixCmd: bridge.accessProblem === "backend"
+                readonly property string fixCmd: bridge.accessProblem === "needs-usb-lib"
+                    ? "python3 -m pip install pyusb libusb-package"
+                    : bridge.accessProblem === "mac-open" ? ""
+                    : bridge.accessProblem === "backend"
                     ? (bridge.isNixos
                        ? "# use the community flake (builds hidapi with the hidraw backend):\nnix run codeberg:Epaphroditus/gamesir-linux-tools-nix"
                        : "HIDAPI_WITH_HIDRAW=1 pip install --user --force-reinstall --no-cache-dir --no-binary :all: hidapi")
@@ -621,14 +624,24 @@ Window {
                     width: parent.width; wrapMode: Text.WordWrap
                     color: Theme.warn; font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontM; font.weight: Font.DemiBold
-                    text: bridge.accessProblem === "backend"
+                    text: bridge.accessProblem === "needs-usb-lib"
+                          ? "⚠ Found your controller, but a library it needs isn't installed"
+                          : bridge.accessProblem === "mac-open"
+                          ? "⚠ Found your controller, but couldn't open it"
+                          : bridge.accessProblem === "backend"
                           ? "⚠ Found your controller, but the Python hidapi library can't open it"
                           : "⚠ Found your controller, but Deadband isn't allowed to open it"
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
                     color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
-                    text: bridge.accessProblem === "backend"
+                    text: bridge.accessProblem === "needs-usb-lib"
+                          ? "On macOS this controller is reached over USB directly, which needs "
+                            + "two small Python packages. Install them, then restart Deadband:"
+                          : bridge.accessProblem === "mac-open"
+                          ? "Another app may be using it: GameSir's own app, Steam, or a second "
+                            + "copy of Deadband. Close it, then unplug and replug the controller."
+                          : bridge.accessProblem === "backend"
                           ? (bridge.isNixos
                              ? "Your hidapi is built with the libusb backend, which can't open "
                                + "hidraw devices. On NixOS, use an overridden hidapi build — "
@@ -643,6 +656,7 @@ Window {
                              : "Run this once, then unplug and replug the controller:")
                 }
                 Text {
+                    visible: accessCol.fixCmd.length > 0
                     width: parent.width; wrapMode: Text.WrapAnywhere
                     color: Theme.text; font.family: "monospace"; font.pixelSize: Theme.fontS
                     text: accessCol.fixCmd
@@ -650,7 +664,8 @@ Window {
                 Row {
                     spacing: 8
                     PillButton {
-                        label: "Copy command" + (bridge.accessProblem === "backend" ? "" : "s")
+                        visible: accessCol.fixCmd.length > 0
+                        label: "Copy command" + (bridge.accessProblem === "no-access" ? "s" : "")
                         onClicked: bridge.copyText(accessCol.fixCmd)
                     }
                     PillButton {

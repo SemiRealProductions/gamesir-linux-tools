@@ -159,7 +159,11 @@ class MouseBridge(QObject):
 
     @staticmethod
     def _nodes_accessible():
-        """Whether every enumerable G502 X / receiver node can be opened."""
+        """Whether every enumerable G502 X / receiver node can be opened. Only
+        Linux has device-file permissions to get wrong; elsewhere (macOS) the
+        paths aren't files, and a silent mouse is just off or asleep."""
+        if not sys.platform.startswith('linux'):
+            return True
         try:
             import hidcompat as hid
             paths = [d.get('path') for d in hid.enumerate()
