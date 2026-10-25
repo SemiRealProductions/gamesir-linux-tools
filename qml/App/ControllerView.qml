@@ -128,15 +128,16 @@ Item {
     }
 
     // ----------------------------------------------------------------- body
-    // Tarantula: the black top shell (bumpers + centre panel) sits behind the
-    // orange body, which is how the real controller is built.
+    // Tarantula: the top shell (bumpers + centre panel) sits behind the body,
+    // which is how the real controller is built -- a shade darker than the body
+    // so it still reads as its own part in the shared slate style.
     Shape {
         anchors.fill: parent
         antialiasing: true
         visible: root.lay.shell.length > 0
         ShapePath {
-            strokeColor: "#2C2C30"; strokeWidth: 1.5
-            fillColor: "#1B1B1D"
+            strokeColor: "#3C414C"; strokeWidth: 1.5
+            fillColor: "#161920"
             PathSvg { path: root.lay.shell.length ? root.bodyPath(root.width, root.height, root.lay.shell) : "" }
         }
     }
@@ -144,13 +145,13 @@ Item {
         anchors.fill: parent
         antialiasing: true
         ShapePath {
-            strokeColor: root.isTar ? "#B33A12" : "#3C414C"
+            strokeColor: "#3C414C"
             strokeWidth: 1.5
             fillGradient: LinearGradient {
                 x1: 0; y1: 0; x2: 0; y2: root.height
-                GradientStop { position: 0.0;  color: root.isTar ? "#FF6229" : "#2B2F3A" }
-                GradientStop { position: 0.55; color: root.isTar ? "#F44C1A" : "#1C1F27" }
-                GradientStop { position: 1.0;  color: root.isTar ? "#D8410F" : "#101218" }
+                GradientStop { position: 0.0;  color: "#2B2F3A" }
+                GradientStop { position: 0.55; color: "#1C1F27" }
+                GradientStop { position: 1.0;  color: "#101218" }
             }
             PathSvg { path: root.bodyPath(root.width, root.height, root.lay.body) }
         }
@@ -255,15 +256,14 @@ Item {
         width: root.width * dia; height: width
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: parent.on ? Theme.accent : (root.isTar ? "#121214" : "#2A2E38")
-            border.color: parent.on ? Qt.lighter(Theme.accent, 1.3) : (root.isTar ? "#2A2A2E" : "#3E4350")
+            color: parent.on ? Theme.accent : "#2A2E38"
+            border.color: parent.on ? Qt.lighter(Theme.accent, 1.3) : "#3E4350"
             border.width: Math.max(1, width * 0.04)
             Behavior on color { ColorAnimation { duration: 80 } }
         }
         Text {
             anchors.centerIn: parent; text: parent.glyph
-            // the Tarantula's face buttons are black with plain white letters
-            color: parent.on ? Theme.textOnAccent : (root.isTar ? "#F2F2F2" : parent.gcol)
+            color: parent.on ? Theme.textOnAccent : parent.gcol
             font.family: Theme.fontFamily; font.bold: true
             font.pixelSize: parent.width * 0.46
         }
@@ -281,14 +281,14 @@ Item {
         width: root.width * dia; height: width
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: root.isTar ? "#0E0E10" : "#262A33"
-            border.color: root.isTar ? "#2A2A2E" : "#3E4350"
+            color: "#262A33"
+            border.color: "#3E4350"
             border.width: Math.max(1, width * 0.03)
         }
         Rectangle {
             width: parent.width * 0.56; height: width; radius: width / 2
-            color: parent.clicked ? Theme.accent : (root.isTar ? "#26262A" : "#454A56")
-            border.color: root.isTar ? "#38383E" : "#555B68"; border.width: 1
+            color: parent.clicked ? Theme.accent : "#454A56"
+            border.color: "#555B68"; border.width: 1
             x: parent.width / 2 - width / 2 + parent.ax * parent.width * 0.20
             y: parent.height / 2 - height / 2 + parent.ay * parent.width * 0.20
             Behavior on color { ColorAnimation { duration: 80 } }
@@ -314,13 +314,13 @@ Item {
         width: root.width * dia; height: width
         Rectangle {
             anchors.fill: parent; radius: width / 2
-            color: parent.on ? Theme.accent : (root.isTar ? "#121214" : "#2A2E38")
-            border.color: root.isTar ? "#2A2A2E" : "#3E4350"
+            color: parent.on ? Theme.accent : "#2A2E38"
+            border.color: "#3E4350"
             Behavior on color { ColorAnimation { duration: 80 } }
         }
         Text {
             anchors.centerIn: parent; text: parent.glyph
-            color: parent.on ? Theme.textOnAccent : (root.isTar ? "#D8D8D8" : "#9AA0AC")
+            color: parent.on ? Theme.textOnAccent : "#9AA0AC"
             font.pixelSize: parent.width * 0.5
         }
     }
@@ -335,12 +335,12 @@ Item {
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width * 0.34; height: parent.height; radius: width * 0.2
-            color: root.isTar ? "#121214" : "#2A2E38"; border.color: root.isTar ? "#2A2A2E" : "#3E4350"
+            color: "#2A2E38"; border.color: "#3E4350"
         }
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width; height: parent.height * 0.34; radius: height * 0.2
-            color: root.isTar ? "#121214" : "#2A2E38"; border.color: root.isTar ? "#2A2A2E" : "#3E4350"
+            color: "#2A2E38"; border.color: "#3E4350"
         }
         Rectangle {
             visible: parent.dir !== "neutral"
@@ -379,13 +379,13 @@ Item {
         x: root.width * root.at("Home")[0] - width / 2
         y: root.height * root.at("Home")[1] - height / 2
         width: root.width * root.lay.size.home; height: width
-        Rectangle { anchors.fill: parent; radius: width / 2; color: "#F2F2F2"; border.color: "#121214"; border.width: Math.max(1, width * 0.08) }
-        Rectangle { anchors.centerIn: parent; width: parent.width * 0.62; height: width; radius: width / 2; color: "#121214" }
-        Text { anchors.centerIn: parent; text: "G"; color: "#F2F2F2"; font.bold: true; font.pixelSize: parent.width * 0.4 }
+        Rectangle { anchors.fill: parent; radius: width / 2; color: "#2A2E38"; border.color: "#3E4350"; border.width: Math.max(1, width * 0.06) }
+        Rectangle { anchors.centerIn: parent; width: parent.width * 0.62; height: width; radius: width / 2; color: "#1C1F27" }
+        Text { anchors.centerIn: parent; text: "G"; color: "#9AA0AC"; font.bold: true; font.pixelSize: parent.width * 0.4 }
     }
     Rectangle {
         visible: root.isTar
-        width: root.width * 0.012; height: width * 0.6; radius: height / 2; color: "#F2F2F2"
+        width: root.width * 0.012; height: width * 0.6; radius: height / 2; color: "#454A56"
         x: root.width * root.at("LED")[0] - width / 2; y: root.height * root.at("LED")[1] - height / 2
     }
 
@@ -451,14 +451,14 @@ Item {
             width: root.width * root.lay.size.paddle; height: width * 0.86
             Rectangle {
                 anchors.fill: parent; radius: width * 0.28
-                color: parent.active ? Theme.accent : "#E8481A"
-                border.color: parent.active ? Qt.lighter(Theme.accent, 1.3) : "#A9350E"
+                color: parent.active ? Theme.accent : "#20232B"
+                border.color: parent.active ? Qt.lighter(Theme.accent, 1.3) : "#3A3E48"
                 border.width: Math.max(1, width * 0.05)
                 Behavior on color { ColorAnimation { duration: 80 } }
             }
             Text {
                 anchors.centerIn: parent; text: parent.modelData
-                color: parent.active ? Theme.textOnAccent : "#FFF3EC"
+                color: parent.active ? Theme.textOnAccent : Theme.textDim
                 font.family: Theme.fontFamily; font.bold: true; font.pixelSize: parent.height * 0.32
             }
         }
