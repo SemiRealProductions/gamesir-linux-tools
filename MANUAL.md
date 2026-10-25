@@ -114,6 +114,20 @@ pointer — that's a KWin feature, not the controller. The app's **Stop mouse mo
 demand; the cleaner permanent fix is a KDE setting. Both are in
 [Troubleshooting](#troubleshooting--recovery).
 
+### Appearance
+
+**Settings → Appearance** holds the look of the app: a theme preset or your own
+colours (which you can export and import as a file), a background image or video,
+and a **controller picture**.
+
+The controller picture swaps the drawn controller for an image of your own, say
+your controller's actual design. Deadband stretches it over the controller's
+outline and keeps drawing the buttons on top, so everything still lights up and
+remaps as usual. **Save template…** gives you that outline as a large PNG, with
+every button where Deadband will draw it; paint over it and choose the result.
+Each controller model keeps its own picture, and it stays on your computer. If
+the file is moved or deleted, Deadband goes back to its own drawing.
+
 ## The mouse (G502 X)
 
 Pick the **G502 X** from the device selector in the header and the app switches to

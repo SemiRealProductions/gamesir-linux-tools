@@ -15,6 +15,14 @@ curated, user-facing summary; the complete history is in git. Format loosely fol
   directly (PyUSB + libusb-package). `--doctor` gives a Mac-specific report.
   Press-to-select, and configuring the G7 Pro / Kaleid / G7 SE, stay
   Linux-only for now. Setup: [docs/macos.md](docs/macos.md).
+- **Controller picture**: Settings → Appearance can swap the drawn controller
+  for your own image (per controller model, kept on your computer), with a
+  template export to line the art up with the buttons. Thanks to
+  [@sinchrotron](https://github.com/sinchrotron) for the idea (#42).
+
+### Changed
+- The Tarantula Pro 8K is drawn in the same slate style as the other
+  controllers instead of its orange product colours.
 
 ### Fixed
 - The G502 X macros tab opened empty for a button that already had a macro

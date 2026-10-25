@@ -89,6 +89,13 @@ Item {
         size: { stick: 0.1398, face: 0.0645, dpad: 0.1505, mini: 0.0323, home: 0.0774, paddle: 0.1075 }
     })
     readonly property var lay: bridge.diagram === "tarantula" ? tarantulaLayout : cycloneLayout
+    // A picture the user chose for this model (Settings → Appearance) replaces
+    // the drawn body; `template` draws the plain outline even when one is set,
+    // for the template export. Back to the drawing if the file won't load.
+    property bool template: false
+    readonly property string customPicture: template ? ""
+        : (Theme.ctrlPictures[bridge.controllerName] || "")
+    readonly property bool pictureShown: customPicture !== "" && picture.status === Image.Ready
     readonly property bool isTar: lay.key === "tarantula"
     function at(n) { return root.lay.pos[n] !== undefined ? root.lay.pos[n] : [0, 0] }
 
@@ -131,10 +138,19 @@ Item {
     // Tarantula: the top shell (bumpers + centre panel) sits behind the body,
     // which is how the real controller is built -- a shade darker than the body
     // so it still reads as its own part in the shared slate style.
+    Image {
+        id: picture
+        anchors.fill: parent
+        source: root.customPicture
+        fillMode: Image.Stretch            // the template is the drawing's own box
+        asynchronous: true; smooth: true; mipmap: true
+        sourceSize.width: root.width * 2   // crisp on HiDPI without holding a huge image
+        visible: root.pictureShown
+    }
     Shape {
         anchors.fill: parent
         antialiasing: true
-        visible: root.lay.shell.length > 0
+        visible: root.lay.shell.length > 0 && !root.pictureShown
         ShapePath {
             strokeColor: "#3C414C"; strokeWidth: 1.5
             fillColor: "#161920"
@@ -144,6 +160,7 @@ Item {
     Shape {
         anchors.fill: parent
         antialiasing: true
+        visible: !root.pictureShown
         ShapePath {
             strokeColor: "#3C414C"
             strokeWidth: 1.5

@@ -140,6 +140,10 @@ QtObject {
     // Density: scales spacing/rounding/type together so the whole UI tightens or
     // relaxes at once (like Outlook's Compact/Cozy). Set via the Appearance
     // settings; every component binds these tokens so it updates live.
+    // Custom controller pictures, {controller model name: image file url}, set
+    // from Settings → Appearance. ControllerView draws the picture in place of
+    // its body; the buttons stay drawn on top.
+    property var ctrlPictures: ({})
     property string density: "comfortable"     // "compact" | "comfortable" | "cozy"
     readonly property bool _compact: density === "compact"
     readonly property bool _cozy:    density === "cozy"

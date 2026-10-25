@@ -67,6 +67,7 @@ Window {
         property string bgImage: ""         // background image file url ("" = none)
         property real   bgDim: 0.55          // 0 = full image .. 1 = full theme bg
         property string bgFill: "crop"       // crop | fit | stretch | tile
+        property string ctrlPicJson: "{}"    // {controller model: picture file url}
     }
 
     // Friendly per-controller names ("Black", "White"), keyed by USB PORT.
@@ -85,6 +86,7 @@ Window {
     Component.onCompleted: {
         Theme.density = appearance.density
         applyThemeJson()
+        _loadPictures()
         _loadNames()
     }
     // If the mouse is unplugged while it's the active device, fall back to controller.
@@ -120,6 +122,21 @@ Window {
         controllerNames = o                                  // reassign: notifies bindings
         ctrlNames.namesJson = JSON.stringify(o)
     }
+
+    // --- custom controller pictures (per model; see ControllerView) ----------
+    function _loadPictures() {
+        try { Theme.ctrlPictures = JSON.parse(appearance.ctrlPicJson || "{}") }
+        catch (e) { Theme.ctrlPictures = ({}) }
+    }
+    function setControllerPicture(model, url) {
+        if (!model) return
+        var o = {}
+        for (var k in Theme.ctrlPictures) o[k] = Theme.ctrlPictures[k]
+        if (url) o[model] = url; else delete o[model]
+        Theme.ctrlPictures = o                               // reassign: notifies bindings
+        appearance.ctrlPicJson = JSON.stringify(o)
+    }
+    property string pictureStatus: ""
 
     // --- theme helpers (apply live + persist) --------------------------------
     function _parseTheme() {
@@ -180,6 +197,31 @@ Window {
                       "Video (*.webm *.mp4 *.mkv *.mov *.m4v)",
                       "All files (*)"]
         onAccepted: appearance.bgImage = selectedFile.toString()
+    }
+    FileDialog {
+        id: ctrlPicDialog
+        title: "Choose a picture for the " + bridge.controllerName
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.svg)", "All files (*)"]
+        onAccepted: win.setControllerPicture(bridge.controllerName, selectedFile.toString())
+    }
+    FileDialog {
+        id: ctrlTemplateDialog
+        fileMode: FileDialog.SaveFile
+        title: "Save the " + bridge.controllerName + " template"
+        nameFilters: ["PNG images (*.png)"]
+        defaultSuffix: "png"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
+        onAccepted: {
+            var target = selectedFile
+            // the preview shows the plain outline for the one frame the grab
+            // takes, rendered at 2000px wide whatever size it is on screen
+            previewView.template = true
+            previewView.grabToImage(function (result) {
+                previewView.template = false
+                win.pictureStatus = result.saveToFile(target)
+                    ? "Template saved" : "Could not save the template there"
+            }, Qt.size(2000, Math.round(2000 / previewView.aspect)))
+        }
     }
     FileDialog {
         id: exportThemeDialog
@@ -1072,6 +1114,52 @@ Window {
                                 horizontalAlignment: Text.AlignRight
                                 font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
                             }
+                        }
+
+                        Divider {}
+
+                        // ------------------------------------------ Controller picture
+                        SectionHeader { text: "Controller picture" }
+                        Text {
+                            width: parent.width; wrapMode: Text.WordWrap
+                            text: bridge.controllerName === ""
+                                ? "Connect a controller (or turn on demo mode) to give it your own picture."
+                                : "Swap the drawn " + bridge.controllerName + " for your own picture. "
+                                  + "Deadband stretches it over the outline and draws the buttons on "
+                                  + "top, so start from the template to line things up; a PNG with a "
+                                  + "transparent background works best. Each controller model keeps "
+                                  + "its own picture, on this computer only."
+                            color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+                        }
+                        Row {
+                            visible: bridge.controllerName !== ""
+                            width: parent.width; spacing: 8
+                            PillButton { label: "Choose…"; onClicked: ctrlPicDialog.open() }
+                            PillButton { label: "Save template…"; onClicked: ctrlTemplateDialog.open() }
+                            PillButton {
+                                label: "Clear"
+                                visible: !!Theme.ctrlPictures[bridge.controllerName]
+                                onClicked: win.setControllerPicture(bridge.controllerName, "")
+                            }
+                        }
+                        Text {
+                            visible: bridge.controllerName !== "" && !!Theme.ctrlPictures[bridge.controllerName]
+                            width: parent.width; elide: Text.ElideMiddle
+                            text: "▸ " + decodeURIComponent(("" + (Theme.ctrlPictures[bridge.controllerName] || ""))
+                                                                .split('/').pop())
+                                  + (previewView.customPicture !== "" && !previewView.pictureShown
+                                     ? "  (can't be opened, showing the drawing)" : "")
+                            color: Theme.textFaint; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+                        }
+                        Text {
+                            visible: win.pictureStatus !== ""
+                            text: win.pictureStatus
+                            color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: Theme.fontS
+                        }
+                        Item {
+                            visible: bridge.controllerName !== ""
+                            width: Math.min(parent.width, 360); height: previewView.height
+                            ControllerView { id: previewView; width: parent.width; height: width / aspect }
                         }
 
                         Divider {}
